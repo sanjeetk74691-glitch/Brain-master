@@ -76,29 +76,44 @@ export default function App() {
   const [shuffledMatchingLeft, setShuffledMatchingLeft] = useState<{id: number, text: string}[]>([]);
   const [shuffledMatchingRight, setShuffledMatchingRight] = useState<{id: number, text: string}[]>([]);
 
+  // Initialize data on mount
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    const parsed = saved ? JSON.parse(saved) : INITIAL_STATE;
-    setGameState(parsed);
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      const parsed = saved ? JSON.parse(saved) : INITIAL_STATE;
+      setGameState(parsed);
+    } catch (e) {
+      console.error("Failed to load state", e);
+      setGameState(INITIAL_STATE);
+    }
+    
     setShuffledQuestions(shuffleArray(QUESTIONS));
 
     const timer = setTimeout(() => {
-      setView(parsed.user ? 'HOME' : 'LOGIN');
       setIsLoaded(true);
     }, 2000);
 
     return () => clearTimeout(timer);
   }, []);
 
+  // Handle view transition after loading
+  useEffect(() => {
+    if (isLoaded) {
+      setView(gameState.user ? 'HOME' : 'LOGIN');
+    }
+  }, [isLoaded, gameState.user]);
+
+  // Persist state
   useEffect(() => {
     if (isLoaded) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
     }
   }, [gameState, isLoaded]);
 
-  const strings = UI_STRINGS[gameState.language];
+  const strings = UI_STRINGS[gameState.language] || UI_STRINGS.en;
 
   const currentQ = useMemo(() => {
+    if (shuffledQuestions.length === 0) return QUESTIONS[0];
     const questionIndex = (gameState.currentLevel - 1) % (shuffledQuestions.length || 1);
     return shuffledQuestions[questionIndex] || QUESTIONS[0];
   }, [gameState.currentLevel, shuffledQuestions]);
@@ -106,7 +121,7 @@ export default function App() {
   // Initialize matching puzzles
   useEffect(() => {
     if (currentQ?.type === 'MATCHING' && currentQ.pairs) {
-      const pairs = currentQ.pairs[gameState.language];
+      const pairs = currentQ.pairs[gameState.language] || currentQ.pairs.en;
       const left = pairs.map((p, i) => ({ id: i, text: p[0] }));
       const right = pairs.map((p, i) => ({ id: i, text: p[1] }));
       setShuffledMatchingLeft(shuffleArray(left));
@@ -145,7 +160,6 @@ export default function App() {
 
   const handleLevelSelect = (levelId: number) => {
     playSound('click');
-    setShuffledQuestions(shuffleArray(QUESTIONS));
     setGameState(prev => ({ ...prev, currentLevel: levelId }));
     setView('PLAY');
     setSelectedIdx(null);
@@ -191,14 +205,13 @@ export default function App() {
     if (matchingSelection === null || matchedPairs.includes(id)) return;
 
     if (matchingSelection === id) {
-      // It's a match!
       playSound('click');
       const newMatched = [...matchedPairs, id];
       setMatchedPairs(newMatched);
       setMatchingSelection(null);
 
-      // Check if all matched
-      if (newMatched.length === currentQ.pairs![gameState.language].length) {
+      const pairs = currentQ.pairs ? (currentQ.pairs[gameState.language] || currentQ.pairs.en) : [];
+      if (newMatched.length === pairs.length) {
         const isFirstTime = !gameState.completedLevels.includes(currentQ.id);
         const pointsGained = isFirstTime ? 120 : 30;
         triggerVictory(pointsGained, isFirstTime, currentQ.id);
@@ -305,7 +318,6 @@ export default function App() {
   const navigateTo = (newView: View) => {
     playSound('click');
     if (newView === 'PLAY') {
-      setShuffledQuestions(shuffleArray(QUESTIONS));
       setSelectedIdx(null);
       setShowHint(false);
       setInputText('');
@@ -497,8 +509,8 @@ export default function App() {
                 <img src={currentQ.imageUrl} alt="puzzle" className="w-full h-full object-cover transition-transform hover:scale-105 duration-700" />
               </div>
             )}
-            <h3 className="text-2xl font-black text-gray-800 leading-tight z-10">{currentQ.prompt[gameState.language]}</h3>
-            {showHint && <div className="mt-4 p-4 bg-yellow-50 border-2 border-yellow-100 rounded-3xl text-yellow-900 font-bold animate-in zoom-in z-10 text-sm shadow-inner">{currentQ.hint[gameState.language]}</div>}
+            <h3 className="text-2xl font-black text-gray-800 leading-tight z-10">{currentQ.prompt[gameState.language] || currentQ.prompt.en}</h3>
+            {showHint && <div className="mt-4 p-4 bg-yellow-50 border-2 border-yellow-100 rounded-3xl text-yellow-900 font-bold animate-in zoom-in z-10 text-sm shadow-inner">{currentQ.hint[gameState.language] || currentQ.hint.en}</div>}
           </div>
           
           {currentQ.type === 'FILL_BLANKS' && (
@@ -567,7 +579,7 @@ export default function App() {
 
           {(currentQ.type === 'MCQ' || currentQ.type === 'IMAGE_MCQ' || currentQ.type === 'TRUE_FALSE' || currentQ.type === 'LOGIC') && (
             <div className="grid grid-cols-1 gap-4 mb-8">
-              {currentQ.options?.[gameState.language].map((option, idx) => {
+              {(currentQ.options?.[gameState.language] || currentQ.options?.en || []).map((option, idx) => {
                 const isSelected = selectedIdx === idx;
                 const isCorrect = idx === currentQ.answer;
                 
