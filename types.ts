@@ -10,9 +10,10 @@ export interface User {
 }
 
 export interface Question {
-  id: number;
+  id: number | string;
   type: QuestionType;
   imageUrl?: string;
+  isAI?: boolean;
   prompt: {
     en: string;
     hi: string;
@@ -25,7 +26,7 @@ export interface Question {
     en: [string, string][];
     hi: [string, string][];
   };
-  answer: number | boolean | string; // index for MCQ, boolean for TF, string for logic/FITB
+  answer: number | boolean | string;
   hint: {
     en: string;
     hi: string;
@@ -36,11 +37,11 @@ export interface GameState {
   user: User | null;
   coins: number;
   currentLevel: number;
-  completedLevels: number[];
+  completedLevels: (number | string)[];
   language: Language;
   soundEnabled: boolean;
   lastDailyBonus: number | null;
   brainScore: number;
 }
 
-export type View = 'SPLASH' | 'LOGIN' | 'HOME' | 'PLAY' | 'LEVELS' | 'SETTINGS' | 'ABOUT';
+export type View = 'SPLASH' | 'LOGIN' | 'HOME' | 'PLAY' | 'LEVELS' | 'SETTINGS' | 'ABOUT' | 'AI_LAB';

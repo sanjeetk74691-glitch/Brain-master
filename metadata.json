@@ -1,5 +1,7 @@
 {
-  "name": "Brain Test Lite",
-  "description": "A minimal, offline-first brain puzzle game with Hindi and English support, featuring various logic puzzles and a virtual coin system.",
-  "requestFramePermissions": []
+  "name": "Brain Test Lite AI",
+  "description": "An AI-powered brain puzzle game featuring Gemini-generated logic, images, and speech.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }

@@ -1,758 +1,517 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Settings as SettingsIcon, 
+  Settings, 
   Play, 
   ChevronLeft, 
   Lightbulb, 
   Coins, 
   X, 
-  Info, 
-  Volume2, 
-  VolumeX, 
   Globe, 
   RotateCcw,
   CheckCircle2,
-  Calendar,
-  LayoutGrid,
-  LogOut,
-  LogOut as ExitIcon,
-  Loader2,
   Brain,
   Zap,
-  TrendingUp,
-  ShieldCheck,
-  FileText,
-  Send
+  Sparkles,
+  Image as ImageIcon,
+  Key,
+  Trophy,
+  Send,
+  LayoutGrid,
+  AlertCircle,
+  ShieldAlert
 } from 'lucide-react';
+import { GoogleGenAI, Type } from "@google/genai";
 import { GameState, View, Question } from './types';
 import { QUESTIONS } from './constants/questions';
 import { UI_STRINGS } from './constants/translations';
 
-const STORAGE_KEY = 'brain_test_lite_state';
-
-const SOUNDS = {
-  correct: 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3',
-  wrong: 'https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3',
-  click: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
-  bonus: 'https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3'
-};
+const STORAGE_KEY = 'brain_test_lite_v7_final';
 
 const INITIAL_STATE: GameState = {
-  user: null,
-  coins: 50,
+  user: { name: "Neural Explorer", email: "", photo: null },
+  coins: 200,
   currentLevel: 1,
   completedLevels: [],
   language: 'en',
   soundEnabled: true,
   lastDailyBonus: null,
-  brainScore: 0
+  brainScore: 100
 };
-
-function shuffleArray<T>(array: T[]): T[] {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(INITIAL_STATE);
   const [view, setView] = useState<View>('SPLASH');
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'correct' | 'wrong'; show: boolean; points?: number }>({ type: 'correct', show: false });
-  const [showHint, setShowHint] = useState(false);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
-  const [showLegal, setShowLegal] = useState<'NONE' | 'PRIVACY' | 'TERMS'>('NONE');
+  const [isReady, setIsReady] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiQuestion, setAiQuestion] = useState<Question | null>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [inputText, setInputText] = useState('');
+  const [showHint, setShowHint] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'correct' | 'wrong'; show: boolean }>({ type: 'correct', show: false });
+  const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
 
-  // Matching game state
-  const [matchingSelection, setMatchingSelection] = useState<number | null>(null);
-  const [matchedPairs, setMatchedPairs] = useState<number[]>([]);
-  const [shuffledMatchingLeft, setShuffledMatchingLeft] = useState<{id: number, text: string}[]>([]);
-  const [shuffledMatchingRight, setShuffledMatchingRight] = useState<{id: number, text: string}[]>([]);
-
-  // Initialize data on mount
+  // --- STARTUP LOGIC ---
   useEffect(() => {
-    try {
+    const startup = async () => {
+      // 1. Load Local Progress
       const saved = localStorage.getItem(STORAGE_KEY);
-      const parsed = saved ? JSON.parse(saved) : INITIAL_STATE;
-      setGameState(parsed);
-    } catch (e) {
-      console.error("Failed to load state", e);
-      setGameState(INITIAL_STATE);
-    }
-    
-    setShuffledQuestions(shuffleArray(QUESTIONS));
+      if (saved) {
+        try { setGameState(prev => ({ ...prev, ...JSON.parse(saved) })); } catch (e) {}
+      }
 
-    const timer = setTimeout(() => {
-      setIsLoaded(true);
-    }, 2000);
+      // 2. Prepare Level Map
+      setShuffledQuestions([...QUESTIONS].sort(() => Math.random() - 0.5));
 
-    return () => clearTimeout(timer);
+      // 3. Check for AI Bridge (AI Studio Environment)
+      if (window.aistudio) {
+        try {
+          const keyExists = await window.aistudio.hasSelectedApiKey();
+          setHasApiKey(keyExists);
+        } catch (e) {
+          console.error("AI Studio bridge check failed", e);
+        }
+      } else if (process.env.API_KEY) {
+        // Fallback for Vercel/Standard env vars
+        setHasApiKey(true);
+      }
+
+      setIsReady(true);
+    };
+    startup();
   }, []);
 
-  // Handle view transition after loading
   useEffect(() => {
-    if (isLoaded) {
-      setView(gameState.user ? 'HOME' : 'LOGIN');
-    }
-  }, [isLoaded, gameState.user]);
+    if (isReady) localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+  }, [gameState, isReady]);
 
-  // Persist state
-  useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
-    }
-  }, [gameState, isLoaded]);
-
-  const strings = UI_STRINGS[gameState.language] || UI_STRINGS.en;
-
-  const currentQ = useMemo(() => {
-    if (shuffledQuestions.length === 0) return QUESTIONS[0];
-    const questionIndex = (gameState.currentLevel - 1) % (shuffledQuestions.length || 1);
-    return shuffledQuestions[questionIndex] || QUESTIONS[0];
-  }, [gameState.currentLevel, shuffledQuestions]);
-
-  // Initialize matching puzzles
-  useEffect(() => {
-    if (currentQ?.type === 'MATCHING' && currentQ.pairs) {
-      const pairs = currentQ.pairs[gameState.language] || currentQ.pairs.en;
-      const left = pairs.map((p, i) => ({ id: i, text: p[0] }));
-      const right = pairs.map((p, i) => ({ id: i, text: p[1] }));
-      setShuffledMatchingLeft(shuffleArray(left));
-      setShuffledMatchingRight(shuffleArray(right));
-      setMatchedPairs([]);
-      setMatchingSelection(null);
-    }
-  }, [currentQ, gameState.language]);
-
-  const playSound = useCallback((type: keyof typeof SOUNDS) => {
-    if (!gameState.soundEnabled) return;
-    const audio = new Audio(SOUNDS[type]);
-    audio.volume = 0.5;
-    audio.play().catch(() => {});
-  }, [gameState.soundEnabled]);
-
-  const handleGoogleLogin = () => {
-    if (isLoggingIn) return;
-    playSound('click');
-    setIsLoggingIn(true);
-    setTimeout(() => {
-      setGameState(prev => ({ ...prev, user: { name: "Brain Master", email: "player@gmail.com", photo: null } }));
-      setView('HOME');
-      setIsLoggingIn(false);
-      playSound('bonus');
-    }, 1500);
-  };
-
-  const handleLogout = () => {
-    playSound('click');
-    if (confirm(strings.logout + "?")) {
-      setGameState(prev => ({ ...prev, user: null }));
-      setView('LOGIN');
+  // --- AI ACTIONS ---
+  const openKeySelection = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      // Per instructions, assume success and proceed
+      setHasApiKey(true);
+      if (view === 'SPLASH') setView('HOME');
+    } else {
+      alert("Please ensure your API_KEY is set in Vercel environment variables.");
     }
   };
 
-  const handleLevelSelect = (levelId: number) => {
-    playSound('click');
-    setGameState(prev => ({ ...prev, currentLevel: levelId }));
-    setView('PLAY');
+  const generateAIChallenge = async () => {
+    if (gameState.coins < 15) {
+      alert("Neural Lab Synthesis costs 15 coins. Level up in Quest Mode to earn more!");
+      return;
+    }
+
+    setIsGenerating(true);
+    setAiQuestion(null);
     setSelectedIdx(null);
-    setShowHint(false);
     setInputText('');
-  };
+    setFeedback({ ...feedback, show: false });
+    setShowHint(false);
 
-  const triggerVictory = (pointsGained: number, isFirstTime: boolean, questionId: number) => {
-    playSound('correct');
-    setTimeout(() => {
-      setFeedback({ type: 'correct', show: true, points: pointsGained });
-      setGameState(prev => ({
-        ...prev,
-        coins: isFirstTime ? prev.coins + 10 : prev.coins,
-        brainScore: prev.brainScore + pointsGained,
-        completedLevels: isFirstTime ? [...prev.completedLevels, questionId] : prev.completedLevels
-      }));
-    }, 700);
-  };
+    try {
+      // Create fresh instance as required
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const types = ['MCQ', 'LOGIC', 'IMAGE_MCQ', 'FILL_BLANKS'];
+      const randomType = types[Math.floor(Math.random() * types.length)];
 
-  const triggerFailure = () => {
-    playSound('wrong');
-    const pointsLost = 10;
-    setTimeout(() => {
-      setFeedback({ type: 'wrong', show: true, points: -pointsLost });
-      setGameState(prev => ({ ...prev, brainScore: Math.max(0, prev.brainScore - pointsLost) }));
-    }, 700);
-    
-    setTimeout(() => {
-      setFeedback(prev => ({ ...prev, show: false }));
-      setSelectedIdx(null);
-      setMatchingSelection(null);
-    }, 2200);
-  };
+      const textResponse = await ai.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: `Generate a tricky and hilarious lateral thinking brain teaser.
+        Type: ${randomType}.
+        Format: JSON strictly.
+        {
+          "type": "${randomType}",
+          "prompt": { "en": "Question text", "hi": "हिंदी में पहेली" },
+          "options": { "en": ["Option 1", "2", "3", "4"], "hi": ["विकल्प 1", "2", "3", "4"] },
+          "answer": number_index_0_to_3,
+          "hint": { "en": "Funny clue", "hi": "मजेदार संकेत" }
+        }`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              type: { type: Type.STRING },
+              prompt: { type: Type.OBJECT, properties: { en: { type: Type.STRING }, hi: { type: Type.STRING } } },
+              options: { type: Type.OBJECT, properties: { en: { type: Type.ARRAY, items: { type: Type.STRING } }, hi: { type: Type.ARRAY, items: { type: Type.STRING } } } },
+              answer: { type: Type.STRING },
+              hint: { type: Type.OBJECT, properties: { en: { type: Type.STRING }, hi: { type: Type.STRING } } }
+            }
+          }
+        }
+      });
 
-  const handleMatchingLeft = (id: number) => {
-    if (matchedPairs.includes(id)) return;
-    playSound('click');
-    setMatchingSelection(id);
-  };
+      const data = JSON.parse(textResponse.text || '{}');
+      let newQ: Question = {
+        ...data,
+        id: `ai_${Date.now()}`,
+        isAI: true,
+        answer: (data.type === 'MCQ' || data.type === 'IMAGE_MCQ') ? parseInt(data.answer) : data.answer
+      };
 
-  const handleMatchingRight = (id: number) => {
-    if (matchingSelection === null || matchedPairs.includes(id)) return;
-
-    if (matchingSelection === id) {
-      playSound('click');
-      const newMatched = [...matchedPairs, id];
-      setMatchedPairs(newMatched);
-      setMatchingSelection(null);
-
-      const pairs = currentQ.pairs ? (currentQ.pairs[gameState.language] || currentQ.pairs.en) : [];
-      if (newMatched.length === pairs.length) {
-        const isFirstTime = !gameState.completedLevels.includes(currentQ.id);
-        const pointsGained = isFirstTime ? 120 : 30;
-        triggerVictory(pointsGained, isFirstTime, currentQ.id);
+      // For Visual Puzzles, use High Quality 1K generation
+      if (data.type === 'IMAGE_MCQ') {
+        const imgResponse = await ai.models.generateContent({
+          model: 'gemini-3-pro-image-preview',
+          contents: { parts: [{ text: `A vibrant, minimalist 2D vector art representing this riddle: ${data.prompt.en}` }] },
+          config: { imageConfig: { aspectRatio: "1:1", imageSize: "1K" } }
+        });
+        const imgPart = imgResponse.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+        if (imgPart?.inlineData) {
+          newQ.imageUrl = `data:image/png;base64,${imgPart.inlineData.data}`;
+        }
       }
-    } else {
-      triggerFailure();
+
+      setAiQuestion(newQ);
+      setGameState(p => ({ ...p, coins: p.coins - 15 }));
+    } catch (err: any) {
+      console.error(err);
+      if (err.message?.includes("Requested entity was not found")) {
+        setHasApiKey(false);
+        alert("The API key session has expired or is invalid. Please re-activate.");
+        openKeySelection();
+      } else {
+        alert("AI Lab is currently over capacity. Please try again in a moment.");
+      }
+    } finally {
+      setIsGenerating(false);
     }
   };
 
-  const checkAnswer = (userInput: number | string) => {
+  const handleResponse = (val: number | string) => {
     if (!currentQ || feedback.show || selectedIdx !== null) return;
-
+    
     let isCorrect = false;
-
     if (currentQ.type === 'FILL_BLANKS') {
-      isCorrect = userInput.toString().toLowerCase().trim() === currentQ.answer.toString().toLowerCase().trim();
+      isCorrect = val.toString().toLowerCase().trim() === currentQ.answer.toString().toLowerCase().trim();
     } else {
-      isCorrect = userInput === currentQ.answer;
-      setSelectedIdx(userInput as number);
+      isCorrect = val === currentQ.answer;
+      setSelectedIdx(val as number);
     }
 
     if (isCorrect) {
-      const isFirstTime = !gameState.completedLevels.includes(currentQ.id);
-      const pointsGained = isFirstTime ? 100 : 25;
-      triggerVictory(pointsGained, isFirstTime, currentQ.id);
-    } else {
-      triggerFailure();
-    }
-  };
-
-  const handleNextLevel = () => {
-    playSound('click');
-    setFeedback({ ...feedback, show: false });
-    setShowHint(false);
-    setSelectedIdx(null);
-    setInputText('');
-    setMatchingSelection(null);
-    setMatchedPairs([]);
-    
-    setGameState(prev => ({ ...prev, currentLevel: prev.currentLevel + 1 }));
-    
-    if (gameState.currentLevel % (shuffledQuestions.length || 1) === 0) {
-      setShuffledQuestions(shuffleArray(QUESTIONS));
-    }
-  };
-
-  const useHint = () => {
-    playSound('click');
-    if (gameState.coins >= 5) {
-      setGameState(prev => ({ 
-        ...prev, 
-        coins: prev.coins - 5,
-        brainScore: Math.max(0, prev.brainScore - 20)
-      }));
-      setShowHint(true);
-      playSound('bonus');
-    } else {
-      alert(strings.notEnoughCoins);
-    }
-  };
-
-  const toggleLanguage = () => {
-    playSound('click');
-    setGameState(prev => ({ ...prev, language: prev.language === 'en' ? 'hi' : 'en' }));
-  };
-
-  const toggleSound = () => {
-    const newState = !gameState.soundEnabled;
-    setGameState(prev => ({ ...prev, soundEnabled: newState }));
-    if (newState) {
-      new Audio(SOUNDS.click).play().catch(() => {});
-    }
-  };
-
-  const claimDailyBonus = () => {
-    const now = new Date().toDateString();
-    if (gameState.lastDailyBonus?.toString() !== now) {
-      playSound('bonus');
-      setGameState(prev => ({
-        ...prev,
-        coins: prev.coins + 50,
-        brainScore: prev.brainScore + 500,
-        lastDailyBonus: now as any
+      setFeedback({ type: 'correct', show: true });
+      const pts = currentQ.isAI ? 50 : 20;
+      setGameState(p => ({
+        ...p,
+        coins: p.coins + 15,
+        brainScore: p.brainScore + pts,
+        completedLevels: [...p.completedLevels, currentQ.id]
       }));
     } else {
-      playSound('click');
+      setFeedback({ type: 'wrong', show: true });
+      setTimeout(() => {
+        setFeedback(f => ({ ...f, show: false }));
+        setSelectedIdx(null);
+      }, 1500);
     }
   };
 
-  const resetProgress = () => {
-    playSound('click');
-    if (confirm(strings.reset + "?")) {
-      setGameState(prev => ({
-        ...INITIAL_STATE,
-        user: prev.user,
-        language: prev.language,
-        soundEnabled: prev.soundEnabled
-      }));
-      setShuffledQuestions(shuffleArray(QUESTIONS));
-      setView('HOME');
-    }
-  };
+  const currentQ = useMemo(() => {
+    if (view === 'AI_LAB' && aiQuestion) return aiQuestion;
+    const qIndex = (gameState.currentLevel - 1) % (shuffledQuestions.length || 1);
+    return shuffledQuestions[qIndex] || QUESTIONS[0];
+  }, [gameState.currentLevel, shuffledQuestions, view, aiQuestion]);
 
-  const navigateTo = (newView: View) => {
-    playSound('click');
-    if (newView === 'PLAY') {
-      setSelectedIdx(null);
-      setShowHint(false);
-      setInputText('');
-      setMatchingSelection(null);
-      setMatchedPairs([]);
-    }
-    setView(newView);
-  };
+  // --- VIEWS ---
 
-  const HUD = ({ title, showExit, showHome }: { title: string, showExit?: boolean, showHome?: boolean }) => (
-    <div className="flex items-center justify-between p-4 bg-white/95 backdrop-blur-md border-b border-gray-100 sticky top-0 z-30 shadow-sm">
-      <div className="flex items-center gap-2">
-        {(showExit || showHome) ? (
-          <button 
-            onClick={() => navigateTo('HOME')} 
-            className={`flex items-center gap-2 px-4 py-2 ${showExit ? 'bg-red-50 text-red-600 border-red-100 active:scale-95' : 'bg-gray-50 text-gray-600 border-gray-100 active:scale-95'} rounded-2xl font-bold text-sm transition-all border`}
-          >
-            {showExit ? <ExitIcon className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-            {showExit ? strings.exit : strings.back}
-          </button>
-        ) : (
-          <h2 className="text-lg font-black text-gray-800 ml-1">{title}</h2>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 rounded-2xl border border-blue-100">
-           <Zap className="w-3.5 h-3.5 text-blue-500 fill-blue-500" />
-           <span className="text-xs font-black text-blue-700 tabular-nums">{gameState.brainScore}</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-50 rounded-2xl border border-yellow-100">
-          <Coins className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
-          <span className="text-xs font-black text-yellow-700 tabular-nums">{gameState.coins}</span>
-        </div>
-      </div>
-    </div>
-  );
+  if (!isReady) return null;
 
-  const LegalOverlay = () => {
-    if (showLegal === 'NONE') return null;
+  if (view === 'SPLASH') {
     return (
-      <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in slide-in-from-bottom duration-300">
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0">
-          <h3 className="text-xl font-black text-gray-800">
-            {showLegal === 'PRIVACY' ? strings.privacyPolicy : strings.termsOfService}
-          </h3>
-          <button onClick={() => setShowLegal('NONE')} className="p-2 bg-gray-100 rounded-full active:scale-90 transition-all"><X className="w-6 h-6 text-gray-600" /></button>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-blue-600 text-white p-10 text-center animate-in fade-in duration-500">
+        <div className="w-28 h-28 bg-white rounded-[3rem] flex items-center justify-center shadow-2xl mb-12 animate-bounce">
+          <Brain className="w-14 h-14 text-blue-600" />
         </div>
-        <div className="flex-1 p-8 overflow-y-auto whitespace-pre-wrap text-gray-600 font-medium leading-relaxed">
-          {showLegal === 'PRIVACY' ? strings.privacyContent : strings.termsContent}
-        </div>
-        <div className="p-6 bg-white border-t border-gray-50">
-          <button onClick={() => setShowLegal('NONE')} className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black shadow-lg active:scale-95 transition-all">{strings.back}</button>
+        <h1 className="text-5xl font-black mb-2 tracking-tighter">Brain Test AI</h1>
+        <p className="text-blue-200 text-xs font-black uppercase tracking-[0.4em] mb-16 opacity-80">Neural Infrastructure 1.0</p>
+        
+        <div className="w-full max-w-xs space-y-4">
+          {!hasApiKey ? (
+            <button 
+              onClick={openKeySelection} 
+              className="w-full py-6 bg-white text-blue-600 rounded-[2.5rem] font-black text-xl shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3"
+            >
+              <Key className="w-6 h-6" /> Activate AI Lab
+            </button>
+          ) : (
+            <button 
+              onClick={() => setView('HOME')} 
+              className="w-full py-6 bg-white text-blue-600 rounded-[2.5rem] font-black text-xl shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3"
+            >
+              <Play className="w-6 h-6 fill-current" /> Initialize Quest
+            </button>
+          )}
+          <div className="pt-6 flex flex-col items-center gap-2">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${hasApiKey ? 'bg-green-400' : 'bg-red-400 animate-pulse'}`} />
+              <p className="text-[10px] font-black uppercase tracking-widest text-blue-200">
+                {hasApiKey ? "System Ready" : "Neural Link Pending"}
+              </p>
+            </div>
+            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="text-[9px] text-blue-300 underline opacity-60">Billing Documentation</a>
+          </div>
         </div>
       </div>
     );
-  };
+  }
 
-  const SplashScreen = () => (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-blue-600 text-white overflow-hidden">
-      <div className="w-32 h-32 bg-white rounded-[2.5rem] flex items-center justify-center shadow-2xl mb-8 animate-bounce">
-        <Brain className="w-16 h-16 text-blue-600" />
-      </div>
-      <h1 className="text-4xl font-black tracking-tight mb-2">Brain Test</h1>
-      <p className="text-blue-100 font-medium opacity-90 tracking-widest uppercase text-xs">Play Store Ready • Endless</p>
-    </div>
-  );
-
-  const LoginScreen = () => (
-    <div className="flex flex-col min-h-screen bg-white p-8 items-center justify-center">
-      <div className="w-24 h-24 bg-blue-100 rounded-[2rem] flex items-center justify-center mb-8">
-        <Brain className="w-12 h-12 text-blue-600" />
-      </div>
-      <h2 className="text-3xl font-black text-gray-900 mb-2">{strings.loginTitle}</h2>
-      <p className="text-gray-500 text-center mb-10 font-medium">{strings.loginSubtitle}</p>
-      <button 
-        onClick={handleGoogleLogin}
-        disabled={isLoggingIn}
-        className={`w-full max-w-xs flex items-center justify-center gap-4 py-5 rounded-[2rem] font-bold transition-all shadow-sm border-2 ${
-          isLoggingIn ? 'bg-gray-50 border-gray-200 text-gray-400 opacity-70' : 'bg-white border-gray-100 text-gray-700 hover:border-blue-100 active:scale-95'
-        }`}
-      >
-        {isLoggingIn ? <><Loader2 className="w-6 h-6 animate-spin text-blue-600" /><span>Signing in...</span></> : <><img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" className="w-6 h-6" alt="Google" />{strings.loginBtn}</>}
+  const HUD = ({ title }: { title: string }) => (
+    <div className="flex items-center justify-between p-6 bg-white border-b border-gray-100 sticky top-0 z-50 shadow-sm">
+      <button onClick={() => setView('HOME')} className="p-3 bg-gray-50 rounded-2xl active:scale-90 transition-all border border-gray-100">
+        <ChevronLeft className="w-5 h-5 text-gray-500" />
       </button>
-      <div className="mt-8 flex gap-4 text-[10px] font-bold text-blue-500 uppercase tracking-tighter">
-        <button onClick={() => setShowLegal('PRIVACY')}>{strings.privacyPolicy}</button>
-        <span className="text-gray-200">|</span>
-        <button onClick={() => setShowLegal('TERMS')}>{strings.termsOfService}</button>
+      <div className="text-center">
+        <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-0.5">{title}</p>
+        <div className="flex items-center gap-2 justify-center">
+           <Brain className="w-4 h-4 text-gray-800" />
+           <span className="font-black text-gray-900 text-sm tracking-tighter">IQ {gameState.brainScore}</span>
+        </div>
       </div>
-      <p className="mt-4 text-[9px] text-gray-300 text-center px-12">{strings.disclaimer}</p>
-      <LegalOverlay />
+      <div className="flex items-center gap-2 px-4 py-2 bg-yellow-50 rounded-2xl border border-yellow-100">
+        <Coins className="w-4 h-4 text-yellow-500 fill-current" />
+        <span className="text-xs font-black text-yellow-800">{gameState.coins}</span>
+      </div>
     </div>
   );
 
-  const HomeScreen = () => (
-    <div className="flex flex-col min-h-screen bg-[#FDFDFF]">
-      <div className="p-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-100">{gameState.user?.name.charAt(0)}</div>
-          <div>
-            <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest leading-none">{strings.welcome}</p>
-            <p className="text-xs font-bold text-gray-700">{gameState.user?.name}</p>
+  if (view === 'HOME') {
+    return (
+      <div className="flex flex-col min-h-screen bg-[#FDFDFF] animate-in slide-in-from-bottom duration-500">
+        <div className="p-6 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-700 rounded-3xl flex items-center justify-center text-white font-black shadow-2xl ring-4 ring-blue-50">E</div>
+            <div>
+              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest leading-none">Neural Profile</p>
+              <p className="text-base font-black text-gray-800">{gameState.user?.name}</p>
+            </div>
           </div>
+          <button 
+            onClick={() => setGameState(p => ({...p, language: p.language === 'en' ? 'hi' : 'en'}))} 
+            className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm active:scale-90"
+          >
+            <Globe className="w-6 h-6 text-gray-400" />
+          </button>
         </div>
-        <div className="flex items-center gap-2">
-           <button onClick={toggleLanguage} className="p-2 bg-white text-gray-400 rounded-2xl border border-gray-100 active:scale-95 shadow-sm transition-all"><Globe className="w-5 h-5" /></button>
-        </div>
-      </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-4 overflow-y-auto">
-        <div className="w-full bg-white border border-gray-100 rounded-[3rem] p-8 mb-8 shadow-lg text-center relative overflow-hidden group">
-           <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Brain className="w-32 h-32 text-blue-600" /></div>
-           <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">{strings.iqLabel}</p>
-           <h3 className="text-6xl font-black text-blue-600 tracking-tighter mb-4">{Math.floor(80 + (gameState.brainScore / 100))}</h3>
-           <div className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 rounded-2xl inline-flex mx-auto border border-blue-100">
-              <Zap className="w-4 h-4 text-blue-500 fill-blue-500" />
-              <span className="font-black text-blue-700 text-sm">{strings.brainScore}: {gameState.brainScore}</span>
+        <div className="flex-1 flex flex-col justify-center items-center px-10">
+           <div className="w-full bg-white border border-gray-100 rounded-[4rem] p-12 shadow-2xl shadow-blue-50/20 mb-12 text-center relative overflow-hidden group">
+              <div className="absolute -top-10 -right-10 opacity-[0.03] group-hover:scale-110 transition-transform duration-1000 rotate-12">
+                <Brain className="w-64 h-64 text-blue-600" />
+              </div>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">IQ Potential</p>
+              <h3 className="text-8xl font-black text-blue-600 mb-8 tracking-tighter tabular-nums">{gameState.brainScore}</h3>
+              <div className="inline-flex items-center gap-2 px-5 py-2 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black border border-blue-100 ring-4 ring-white">
+                 <Sparkles className="w-4 h-4" /> GEMINI 3 PRO ONLINE
+              </div>
+           </div>
+
+           {!hasApiKey && (
+             <button onClick={openKeySelection} className="w-full mb-4 p-4 bg-red-50 border border-red-100 rounded-[2rem] flex items-center gap-3 animate-pulse">
+                <ShieldAlert className="w-5 h-5 text-red-500" />
+                <span className="text-xs font-black text-red-600 uppercase tracking-tight">API Link Broken - Click to Re-select</span>
+             </button>
+           )}
+
+           <div className="w-full max-w-xs space-y-4">
+              <button 
+                onClick={() => { setView('AI_LAB'); generateAIChallenge(); }}
+                disabled={!hasApiKey}
+                className={`w-full py-6 rounded-[2.5rem] font-black text-xl shadow-2xl flex items-center justify-center gap-4 transition-all transform ${hasApiKey ? 'bg-blue-600 text-white shadow-blue-200 active:scale-95 hover:-translate-y-1' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+              >
+                <Zap className={`w-7 h-7 fill-current ${hasApiKey ? 'text-yellow-300' : ''}`} />
+                Random AI Test
+              </button>
+              
+              <button 
+                onClick={() => setView('PLAY')}
+                className="w-full py-5 bg-white border-2 border-gray-100 text-gray-700 rounded-[2.2rem] font-black text-lg flex items-center justify-center gap-4 active:scale-95 transition-all shadow-sm"
+              >
+                <Play fill="currentColor" className="w-5 h-5" />
+                Classic Quest
+              </button>
+
+              <div className="grid grid-cols-2 gap-4">
+                 <button onClick={() => setView('LEVELS')} className="py-5 bg-white border border-gray-100 rounded-[2.2rem] flex flex-col items-center gap-2 active:scale-95 shadow-sm">
+                    <LayoutGrid className="w-6 h-6 text-orange-400" />
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Map</span>
+                 </button>
+                 <button onClick={() => setView('SETTINGS')} className="py-5 bg-white border border-gray-100 rounded-[2.2rem] flex flex-col items-center gap-2 active:scale-95 shadow-sm">
+                    <Settings className="w-6 h-6 text-gray-400" />
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Settings</span>
+                 </button>
+              </div>
            </div>
         </div>
-
-        <div className="w-full max-w-xs space-y-4">
-          <button 
-            onClick={() => navigateTo('PLAY')}
-            className="group w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-[2rem] font-black text-2xl flex items-center justify-center gap-4 shadow-xl shadow-blue-200 active:scale-[0.97] transition-all"
-          >
-            <Play fill="white" className="w-6 h-6 ml-0.5" />
-            {strings.play}
-          </button>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => navigateTo('LEVELS')} className="bg-white border-2 border-gray-100 py-6 rounded-[2rem] font-bold text-gray-700 flex flex-col items-center gap-3 active:scale-95 transition-all shadow-sm hover:border-blue-100">
-              <LayoutGrid className="w-6 h-6 text-orange-500" />
-              <span className="text-sm">{strings.levels}</span>
-            </button>
-            <button onClick={() => navigateTo('SETTINGS')} className="bg-white border-2 border-gray-100 py-6 rounded-[2rem] font-bold text-gray-700 flex flex-col items-center gap-3 active:scale-95 transition-all shadow-sm hover:border-blue-100">
-              <SettingsIcon className="w-6 h-6 text-gray-400" />
-              <span className="text-sm">{strings.settings}</span>
-            </button>
-          </div>
-
-          <button 
-            onClick={claimDailyBonus}
-            disabled={gameState.lastDailyBonus?.toString() === new Date().toDateString()}
-            className={`w-full py-5 rounded-[2rem] font-black text-lg flex items-center justify-center gap-3 transition-all ${
-              gameState.lastDailyBonus?.toString() === new Date().toDateString() ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200 border' : 'bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-100 active:scale-95'
-            }`}
-          >
-            <Calendar className="w-5 h-5" />
-            {gameState.lastDailyBonus?.toString() === new Date().toDateString() ? strings.alreadyClaimed : strings.dailyBonus}
-          </button>
-        </div>
-      </div>
-
-      <div className="px-8 pb-8 mt-auto flex flex-col items-center gap-4">
-        <div className="flex gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-tight bg-gray-50/50 px-4 py-2 rounded-full border border-gray-100">
-          <button onClick={() => setShowLegal('PRIVACY')} className="hover:text-blue-500">{strings.privacyPolicy}</button>
-          <span className="text-gray-200">•</span>
-          <button onClick={() => setShowLegal('TERMS')} className="hover:text-blue-500">{strings.termsOfService}</button>
-          <span className="text-gray-200">•</span>
-          <button onClick={() => navigateTo('ABOUT')} className="hover:text-blue-500">{strings.about}</button>
-        </div>
-        <span className="text-[9px] font-black uppercase tracking-widest opacity-30">v2.1 • {strings.unlimited}</span>
-      </div>
-      <LegalOverlay />
-    </div>
-  );
-
-  const PlayScreen = () => {
-    const isCompleted = gameState.completedLevels.includes(currentQ?.id);
-
-    return (
-      <div className="flex flex-col min-h-screen bg-gray-50">
-        <HUD title={`${strings.level} ${gameState.currentLevel}`} showExit />
         
-        <div className="px-6 pt-4 flex items-center justify-between">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-xl shadow-md border border-blue-500">
-                <Brain className="w-4 h-4" />
-                <span className="text-xs font-black uppercase tracking-wider">{strings.brainScore}: {gameState.brainScore}</span>
-            </div>
-            <div className="flex items-center gap-1 px-3 py-1.5 bg-white rounded-xl border border-gray-200 text-gray-500">
-                <TrendingUp className="w-3 h-3" />
-                <span className="text-[10px] font-black uppercase tracking-tighter">IQ {Math.floor(80 + (gameState.brainScore / 100))}</span>
-            </div>
+        <div className="p-12 text-center opacity-40">
+           <p className="text-[10px] text-gray-800 font-black uppercase tracking-[0.5em]">Scalable AI Studio Architecture</p>
         </div>
+      </div>
+    );
+  }
 
-        <div className="p-6 flex-1 flex flex-col max-w-lg mx-auto w-full">
-          <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-gray-100 mb-8 flex-1 flex flex-col justify-center items-center text-center relative overflow-hidden">
-            {currentQ.imageUrl && (
-              <div className="mb-6 w-full max-h-48 overflow-hidden rounded-2xl shadow-inner border border-gray-100">
-                <img src={currentQ.imageUrl} alt="puzzle" className="w-full h-full object-cover transition-transform hover:scale-105 duration-700" />
-              </div>
-            )}
-            <h3 className="text-2xl font-black text-gray-800 leading-tight z-10">{currentQ.prompt[gameState.language] || currentQ.prompt.en}</h3>
-            {showHint && <div className="mt-4 p-4 bg-yellow-50 border-2 border-yellow-100 rounded-3xl text-yellow-900 font-bold animate-in zoom-in z-10 text-sm shadow-inner">{currentQ.hint[gameState.language] || currentQ.hint.en}</div>}
+  if (view === 'AI_LAB') {
+    return (
+      <div className="flex flex-col min-h-screen bg-[#F9FBFF]">
+        <HUD title="AI LAB: Logic Synthesis" />
+        
+        {isGenerating ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+            <div className="relative mb-14">
+               <div className="w-44 h-44 border-[10px] border-blue-50 border-t-blue-600 rounded-full animate-spin"></div>
+               <div className="absolute inset-0 m-auto w-24 h-24 flex items-center justify-center">
+                  <Brain className="w-14 h-14 text-blue-600 animate-pulse" />
+               </div>
+            </div>
+            <h3 className="text-3xl font-black text-gray-800 tracking-tighter">AI Synthesizing...</h3>
+            <p className="text-gray-400 font-bold mt-4 uppercase text-[10px] tracking-[0.4em] animate-pulse">Building Tricky Patterns</p>
           </div>
-          
-          {currentQ.type === 'FILL_BLANKS' && (
-            <div className="mb-8 animate-in slide-in-from-bottom duration-500">
-              <div className="relative group">
-                <input 
-                  type="text"
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Type answer here..."
-                  onKeyDown={(e) => e.key === 'Enter' && checkAnswer(inputText)}
-                  className="w-full p-6 rounded-[2rem] bg-white border-2 border-gray-100 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none font-bold text-xl transition-all shadow-sm"
-                />
-                <button 
-                  onClick={() => checkAnswer(inputText)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-4 bg-blue-600 text-white rounded-2xl shadow-lg active:scale-90 transition-all hover:bg-blue-700"
-                >
-                  <Send className="w-5 h-5" />
+        ) : aiQuestion ? (
+          <div className="p-8 flex-1 flex flex-col max-w-md mx-auto w-full animate-in zoom-in-95 duration-500 pb-32 overflow-y-auto">
+             <div className="bg-white p-10 rounded-[4rem] shadow-2xl border border-blue-50 mb-10 relative flex flex-col items-center text-center overflow-hidden min-h-[380px] justify-center">
+                <div className="absolute top-8 left-8 px-5 py-2 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black border border-blue-100 uppercase tracking-tighter">AI CHALLENGE</div>
+                
+                <div className="w-full mt-12">
+                   {aiQuestion.imageUrl && (
+                     <div className="w-full aspect-square mb-10 rounded-[3.5rem] overflow-hidden shadow-inner border border-gray-100 bg-gray-50 ring-8 ring-blue-50/50">
+                        <img src={aiQuestion.imageUrl} className="w-full h-full object-cover" alt="AI Clue" />
+                     </div>
+                   )}
+                   <h3 className="text-3xl font-black text-gray-800 leading-tight mb-4 px-2 tracking-tighter">
+                     {aiQuestion.prompt[gameState.language] || aiQuestion.prompt.en}
+                   </h3>
+                </div>
+             </div>
+
+             <div className="grid grid-cols-1 gap-4">
+                {aiQuestion.type === 'FILL_BLANKS' ? (
+                  <div className="relative">
+                    <input 
+                      type="text"
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder="Type your answer..."
+                      className="w-full p-8 rounded-[3rem] bg-white border-2 border-gray-100 focus:border-blue-500 outline-none font-black text-2xl shadow-xl transition-all"
+                    />
+                    <button onClick={() => handleResponse(inputText)} className="absolute right-4 top-1/2 -translate-y-1/2 p-5 bg-blue-600 text-white rounded-[2rem] active:scale-90 shadow-2xl">
+                       <Send className="w-7 h-7" />
+                    </button>
+                  </div>
+                ) : (
+                  (aiQuestion.options?.[gameState.language] || aiQuestion.options?.en || []).map((opt, idx) => (
+                    <button 
+                      key={idx} 
+                      onClick={() => handleResponse(idx)}
+                      disabled={selectedIdx !== null}
+                      className={`p-7 rounded-[3rem] font-black text-xl border-2 transition-all active:scale-95 text-left flex justify-between items-center group ${
+                        selectedIdx === idx 
+                          ? (idx === aiQuestion!.answer ? 'bg-green-500 border-green-600 text-white shadow-2xl' : 'bg-red-500 border-red-600 text-white animate-shake')
+                          : 'bg-white border-gray-100 text-gray-700 hover:border-blue-200 shadow-lg'
+                      }`}
+                    >
+                      <span className="flex-1">{opt}</span>
+                      {selectedIdx === idx && idx === aiQuestion!.answer && <CheckCircle2 className="w-8 h-8 shrink-0" />}
+                    </button>
+                  ))
+                )}
+             </div>
+
+             <div className="fixed bottom-0 left-0 right-0 p-10 bg-gradient-to-t from-[#F9FBFF] to-transparent flex gap-4 max-w-md mx-auto z-40">
+                <button onClick={() => setShowHint(true)} className="flex-1 py-6 bg-white border-2 border-yellow-400 text-yellow-600 rounded-[2.5rem] font-black active:scale-95 transition-all shadow-xl flex items-center justify-center gap-3">
+                   <Lightbulb className="w-6 h-6" /> Hint
                 </button>
-              </div>
-            </div>
-          )}
-
-          {currentQ.type === 'MATCHING' && (
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              <div className="flex flex-col gap-3">
-                {shuffledMatchingLeft.map((item) => {
-                  const isSelected = matchingSelection === item.id;
-                  const isMatched = matchedPairs.includes(item.id);
-                  return (
-                    <button
-                      key={`left-${item.id}`}
-                      disabled={isMatched || feedback.show}
-                      onClick={() => handleMatchingLeft(item.id)}
-                      className={`p-4 rounded-2xl font-bold text-sm border-2 transition-all ${
-                        isMatched ? 'bg-green-50 border-green-200 text-green-700 opacity-60' :
-                        isSelected ? 'bg-blue-600 border-blue-700 text-white shadow-lg scale-105' :
-                        'bg-white border-gray-100 text-gray-700 hover:border-blue-300'
-                      }`}
-                    >
-                      {item.text}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex flex-col gap-3">
-                {shuffledMatchingRight.map((item) => {
-                  const isMatched = matchedPairs.includes(item.id);
-                  return (
-                    <button
-                      key={`right-${item.id}`}
-                      disabled={isMatched || feedback.show}
-                      onClick={() => handleMatchingRight(item.id)}
-                      className={`p-4 rounded-2xl font-bold text-sm border-2 transition-all ${
-                        isMatched ? 'bg-green-50 border-green-200 text-green-700 opacity-60' :
-                        'bg-white border-gray-100 text-gray-700 hover:border-blue-300'
-                      }`}
-                    >
-                      {item.text}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {(currentQ.type === 'MCQ' || currentQ.type === 'IMAGE_MCQ' || currentQ.type === 'TRUE_FALSE' || currentQ.type === 'LOGIC') && (
-            <div className="grid grid-cols-1 gap-4 mb-8">
-              {(currentQ.options?.[gameState.language] || currentQ.options?.en || []).map((option, idx) => {
-                const isSelected = selectedIdx === idx;
-                const isCorrect = idx === currentQ.answer;
-                
-                let buttonStyle = 'bg-white border-gray-100 hover:border-blue-300 text-gray-700 shadow-sm';
-                
-                if (isSelected) {
-                  buttonStyle = isCorrect 
-                    ? 'bg-green-500 border-green-600 text-white scale-[1.08] shadow-2xl z-20 ring-8 ring-green-100' 
-                    : 'bg-red-500 border-red-600 text-white scale-[0.94] shadow-md animate-shake z-10 ring-8 ring-red-100';
-                } else if (isCompleted && isCorrect) {
-                  buttonStyle = 'bg-green-50 border-green-500 text-green-700';
-                }
-
-                return (
-                  <button 
-                    key={idx} 
-                    onClick={() => checkAnswer(idx)} 
-                    disabled={selectedIdx !== null}
-                    className={`p-6 rounded-[2rem] font-black text-lg border-2 transition-all duration-300 active:scale-95 text-left flex items-center justify-between ${buttonStyle}`}
-                  >
-                    <span className="pr-4">{option}</span>
-                    {isSelected && isCorrect && <CheckCircle2 className="w-7 h-7 text-white shrink-0 animate-in zoom-in duration-300" />}
-                    {isSelected && !isCorrect && <X className="w-7 h-7 text-white shrink-0 animate-in zoom-in duration-300" />}
-                    {isCompleted && isCorrect && !isSelected && <CheckCircle2 className="w-6 h-6 text-green-500 shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="flex gap-4 items-center pb-8">
-            <button onClick={useHint} disabled={showHint || selectedIdx !== null || matchedPairs.length > 0} className={`flex-1 flex items-center justify-center gap-3 py-5 rounded-[2rem] font-black text-lg transition-all active:scale-95 ${showHint ? 'bg-gray-100 text-gray-400 border border-gray-200' : 'bg-yellow-400 text-yellow-900 shadow-lg shadow-yellow-100 hover:bg-yellow-500'}`}><Lightbulb className="w-6 h-6" />{strings.hint} (-5)</button>
-            {feedback.type === 'correct' && feedback.show && (
-              <button onClick={handleNextLevel} className="flex-1 flex items-center justify-center gap-3 py-5 bg-blue-600 text-white rounded-[2rem] font-black text-lg shadow-xl shadow-blue-100 active:scale-95 animate-in slide-in-from-right hover:bg-blue-700">
-                {strings.next} <ChevronLeft className="w-6 h-6 rotate-180" />
-              </button>
-            )}
+                <button onClick={generateAIChallenge} className="flex-1 py-6 bg-gray-900 text-white rounded-[2.5rem] font-black active:scale-95 transition-all shadow-xl flex items-center justify-center gap-3">
+                   <RotateCcw className="w-6 h-6" /> Regenerate
+                </button>
+             </div>
           </div>
-        </div>
+        ) : (
+           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+             <AlertCircle className="w-20 h-20 text-red-300 mb-8" />
+             <h3 className="text-2xl font-black text-gray-800 tracking-tighter">AI Node Disconnected</h3>
+             <button onClick={generateAIChallenge} className="mt-8 px-12 py-6 bg-blue-600 text-white rounded-[2.5rem] font-black shadow-2xl">Reconnect Lab</button>
+           </div>
+        )}
 
-        {feedback.show && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-gray-900/60 backdrop-blur-sm">
-            <div className="bg-white rounded-[3.5rem] p-10 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-300">
-              <div className={`w-24 h-24 mx-auto mb-6 rounded-[2rem] flex flex-col items-center justify-center ${feedback.type === 'correct' ? 'bg-green-500 animate-bounce' : 'bg-red-500 animate-shake'} shadow-lg ring-8 ${feedback.type === 'correct' ? 'ring-green-50' : 'ring-red-50'}`}>
-                {feedback.type === 'correct' ? <CheckCircle2 className="w-12 h-12 text-white" /> : <X className="w-12 h-12 text-white" />}
-                <span className="text-white font-black text-xs mt-1 tabular-nums">{feedback.points && feedback.points > 0 ? `+${feedback.points}` : feedback.points}</span>
-              </div>
-              <h2 className="text-4xl font-black text-gray-800 mb-2">{feedback.type === 'correct' ? strings.correct : strings.wrong}</h2>
-              <p className="text-gray-400 font-bold mb-8 text-sm uppercase tracking-widest">{strings.brainScore}: {gameState.brainScore}</p>
-              
-              {feedback.type === 'correct' ? (
-                 <button onClick={handleNextLevel} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-[2rem] font-black text-xl shadow-lg active:scale-95 transition-all">{strings.next}</button>
-              ) : (
-                 <button onClick={() => { setFeedback({ ...feedback, show: false }); setSelectedIdx(null); setMatchingSelection(null); }} className="w-full bg-gray-100 text-gray-700 py-5 rounded-[2rem] font-black text-lg active:scale-95 transition-all">{strings.back}</button>
-              )}
-            </div>
+        {showHint && aiQuestion && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/80 backdrop-blur-md" onClick={() => setShowHint(false)}>
+             <div className="w-full max-w-sm bg-white rounded-[4.5rem] p-14 text-center shadow-2xl animate-in zoom-in" onClick={e => e.stopPropagation()}>
+                <div className="w-24 h-24 bg-yellow-50 rounded-full flex items-center justify-center mx-auto mb-10 ring-8 ring-yellow-50/50">
+                   <Lightbulb className="w-12 h-12 text-yellow-500" />
+                </div>
+                <h4 className="text-[10px] font-black text-yellow-500 uppercase tracking-[0.5em] mb-5">AI Clue</h4>
+                <p className="text-3xl font-black text-gray-800 leading-tight mb-12 tracking-tighter">
+                   {aiQuestion.hint[gameState.language] || aiQuestion.hint.en}
+                </p>
+                <button onClick={() => setShowHint(false)} className="w-full py-7 bg-gray-900 text-white rounded-[2.5rem] font-black active:scale-95 shadow-2xl text-xl">Understood</button>
+             </div>
+          </div>
+        )}
+
+        {feedback.show && feedback.type === 'correct' && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-8 bg-green-500/30 backdrop-blur-2xl">
+             <div className="bg-white rounded-[5rem] p-16 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-300">
+                <div className="w-36 h-36 mx-auto mb-10 bg-green-500 rounded-[4rem] flex items-center justify-center text-white shadow-2xl animate-bounce">
+                   <Trophy className="w-20 h-20" />
+                </div>
+                <h2 className="text-6xl font-black text-gray-900 mb-3 tracking-tighter">Mastermind!</h2>
+                <p className="text-gray-400 font-bold mb-12 text-[10px] uppercase tracking-[0.4em]">+50 IQ SCORE</p>
+                <button 
+                  onClick={() => { setFeedback(f => ({...f, show: false})); generateAIChallenge(); }} 
+                  className="w-full py-7 bg-blue-600 text-white rounded-[3rem] font-black text-2xl shadow-2xl active:scale-95"
+                >
+                  Generate Next
+                </button>
+             </div>
           </div>
         )}
       </div>
     );
-  };
+  }
 
-  const LevelsScreen = () => (
-    <div className="flex flex-col min-h-screen bg-white">
-      <HUD title={strings.levels} showHome />
-      <div className="p-6 grid grid-cols-4 gap-4 max-w-lg mx-auto w-full overflow-y-auto max-h-[calc(100vh-80px)] pb-24">
-        {Array.from({ length: Math.max(24, gameState.currentLevel + 12) }).map((_, idx) => {
-          const levelNum = idx + 1;
-          const isCurrent = levelNum === gameState.currentLevel;
-          const isPlayed = levelNum < gameState.currentLevel;
-          return (
-            <button key={levelNum} onClick={() => handleLevelSelect(levelNum)} className={`h-20 rounded-[1.8rem] font-black text-2xl flex items-center justify-center transition-all border-2 active:scale-90 ${
-              isCurrent ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100' : isPlayed ? 'bg-green-500 border-green-500 text-white opacity-60' : 'bg-white border-gray-100 text-gray-300 hover:border-blue-100'
-            }`}>
-              {levelNum}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  const SettingsScreen = () => (
-    <div className="flex flex-col min-h-screen bg-white">
-      <HUD title={strings.settings} showHome />
-      <div className="p-6 flex flex-col gap-6 max-w-lg mx-auto w-full">
-        <div className="bg-gray-50/50 p-8 rounded-[3rem] space-y-6 border border-gray-100">
-          <div className="flex items-center gap-4 mb-4">
-             <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-blue-100">{gameState.user?.name.charAt(0)}</div>
-             <div>
-                <p className="font-black text-gray-800 text-lg">{gameState.user?.name}</p>
-                <p className="text-gray-400 text-sm font-medium">{gameState.user?.email}</p>
-             </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4"><Globe className="w-6 h-6 text-blue-600" /><span className="font-black text-gray-800">{strings.language}</span></div>
-            <button onClick={toggleLanguage} className="bg-white border-2 border-gray-100 px-6 py-3 rounded-[1.5rem] font-black text-blue-600 shadow-sm text-sm active:scale-95 transition-all">{gameState.language === 'en' ? 'हिन्दी' : 'English'}</button>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">{gameState.soundEnabled ? <Volume2 className="w-6 h-6 text-green-600" /> : <VolumeX className="w-6 h-6 text-red-600" />}<span className="font-black text-gray-800">{strings.sound}</span></div>
-            <button onClick={toggleSound} className={`w-24 py-3 rounded-[1.5rem] font-black text-sm transition-all active:scale-95 ${gameState.soundEnabled ? 'bg-green-500 text-white shadow-green-100' : 'bg-gray-200 text-gray-600'}`}>{gameState.soundEnabled ? 'ON' : 'OFF'}</button>
-          </div>
-        </div>
-        <button onClick={resetProgress} className="flex items-center justify-center gap-3 w-full bg-white border-2 border-red-50 text-red-500 p-6 rounded-[2.5rem] font-black text-lg active:scale-95 shadow-sm hover:bg-red-50 transition-all"><RotateCcw className="w-6 h-6" /> {strings.reset}</button>
-        <button onClick={handleLogout} className="flex items-center justify-center gap-3 w-full bg-red-50 text-red-600 p-6 rounded-[2.5rem] font-black text-lg active:scale-95 shadow-sm mt-4 hover:bg-red-100 transition-all"><LogOut className="w-6 h-6" /> {strings.logout}</button>
-      </div>
-    </div>
-  );
-
-  const AboutScreen = () => (
-    <div className="flex flex-col min-h-screen bg-white">
-      <HUD title={strings.about} showHome />
-      <div className="p-8 flex-1 overflow-y-auto pb-24">
-        <div className="w-24 h-24 bg-blue-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-xl"><Brain className="w-12 h-12 text-white" /></div>
-        <h2 className="text-3xl font-black text-gray-900 text-center mb-4">{strings.appName}</h2>
-        <p className="text-gray-500 font-medium leading-relaxed text-center mb-8">{strings.aboutText}</p>
-        
-        <div className="space-y-4">
-          <button 
-            onClick={() => setShowLegal('PRIVACY')}
-            className="w-full flex items-center justify-between p-6 bg-white border border-gray-100 rounded-[2rem] shadow-sm hover:border-blue-100 active:scale-[0.98] transition-all"
-          >
-            <div className="flex items-center gap-4">
-              <ShieldCheck className="w-6 h-6 text-green-500" />
-              <span className="font-black text-gray-800">{strings.privacyPolicy}</span>
-            </div>
-            <ChevronLeft className="w-5 h-5 text-gray-300 rotate-180" />
-          </button>
-
-          <button 
-            onClick={() => setShowLegal('TERMS')}
-            className="w-full flex items-center justify-between p-6 bg-white border border-gray-100 rounded-[2rem] shadow-sm hover:border-blue-100 active:scale-[0.98] transition-all"
-          >
-            <div className="flex items-center gap-4">
-              <FileText className="w-6 h-6 text-blue-500" />
-              <span className="font-black text-gray-800">{strings.termsOfService}</span>
-            </div>
-            <ChevronLeft className="w-5 h-5 text-gray-300 rotate-180" />
-          </button>
-        </div>
-
-        <div className="mt-12 p-6 bg-gray-50 rounded-[2rem] text-center">
-          <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Developer</p>
-          <p className="text-gray-800 font-black text-lg">Lite Games Studio</p>
-          <p className="text-[10px] text-gray-400 mt-4 px-4">{strings.disclaimer}</p>
-        </div>
-      </div>
-      <LegalOverlay />
-    </div>
-  );
-
-  if (view === 'SPLASH') return <SplashScreen />;
-  if (view === 'LOGIN') return <LoginScreen />;
-
+  // Classic Quest
   return (
-    <div className="max-w-md mx-auto shadow-2xl min-h-screen relative overflow-x-hidden bg-white selection:bg-blue-100">
-      <style>{`
-        @keyframes shake {
-          0%, 100% { transform: translateX(0) rotate(0); }
-          20% { transform: translateX(-4px) rotate(-1deg); }
-          40% { transform: translateX(4px) rotate(1deg); }
-          60% { transform: translateX(-4px) rotate(-1deg); }
-          80% { transform: translateX(4px) rotate(1deg); }
-        }
-        .animate-shake {
-          animation: shake 0.4s ease-in-out infinite;
-        }
-      `}</style>
-      {view === 'HOME' && <HomeScreen />}
-      {view === 'PLAY' && <PlayScreen />}
-      {view === 'LEVELS' && <LevelsScreen />}
-      {view === 'SETTINGS' && <SettingsScreen />}
-      {view === 'ABOUT' && <AboutScreen />}
+    <div className="flex flex-col min-h-screen bg-gray-50 animate-in fade-in overflow-y-auto">
+      <HUD title={`Quest Level ${gameState.currentLevel}`} />
+      <div className="p-8 flex-1 flex flex-col max-w-md mx-auto w-full pb-36">
+         <div className="bg-white p-12 rounded-[4.5rem] shadow-2xl border border-gray-100 mb-10 flex-1 flex flex-col justify-center items-center text-center relative overflow-hidden min-h-[400px] border-b-8 border-b-blue-50">
+            {currentQ.imageUrl && (
+              <div className="mb-12 w-full h-72 overflow-hidden rounded-[3.5rem] shadow-inner border border-gray-100 bg-gray-50">
+                <img src={currentQ.imageUrl} alt="Puzzle" className="w-full h-full object-cover" />
+              </div>
+            )}
+            <h3 className="text-3xl font-black text-gray-800 leading-tight mb-6 tracking-tighter">{currentQ.prompt[gameState.language] || currentQ.prompt.en}</h3>
+            {showHint && <div className="mt-10 p-8 bg-yellow-50 border-2 border-yellow-100 rounded-[3rem] text-yellow-900 font-bold text-base animate-in zoom-in">{currentQ.hint[gameState.language] || currentQ.hint.en}</div>}
+         </div>
+         
+         <div className="grid grid-cols-1 gap-5">
+            {(currentQ.options?.[gameState.language] || currentQ.options?.en || []).map((opt, idx) => (
+              <button 
+                key={idx} 
+                onClick={() => handleResponse(idx)}
+                className={`p-7 rounded-[3rem] font-black text-xl border-2 transition-all active:scale-95 text-left flex justify-between items-center ${selectedIdx === idx ? (idx === currentQ.answer ? 'bg-green-500 border-green-600 text-white shadow-2xl' : 'bg-red-500 border-red-600 text-white animate-shake') : 'bg-white border-gray-100 text-gray-700 hover:border-blue-100 shadow-lg'}`}
+              >
+                <span className="flex-1">{opt}</span>
+                {selectedIdx === idx && (idx === currentQ.answer ? <CheckCircle2 className="w-8 h-8" /> : <X className="w-8 h-8" />)}
+              </button>
+            ))}
+         </div>
+         
+         <div className="fixed bottom-0 left-0 right-0 p-10 flex gap-5 max-w-md mx-auto z-40 bg-gradient-to-t from-gray-50 to-transparent">
+           <button onClick={() => setShowHint(true)} className="flex-1 py-6 bg-white border-2 border-yellow-400 text-yellow-600 rounded-[3rem] font-black shadow-2xl active:scale-95">
+             <Lightbulb className="w-7 h-7 mx-auto" />
+           </button>
+           {feedback.show && feedback.type === 'correct' && (
+             <button onClick={() => { setFeedback(f => ({...f, show: false})); setSelectedIdx(null); setGameState(p => ({...p, currentLevel: p.currentLevel + 1})); }} className="flex-[4] py-6 bg-blue-600 text-white rounded-[3rem] font-black text-xl shadow-2xl active:scale-95">
+               Level Up!
+             </button>
+           )}
+         </div>
+      </div>
     </div>
   );
 }

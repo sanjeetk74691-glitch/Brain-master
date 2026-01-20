@@ -1,5 +1,5 @@
 {
-  "name": "brain-test-lite",
+  "name": "brain-test-lite-ai",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,7 +11,8 @@
   "dependencies": {
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "lucide-react": "0.475.0"
+    "lucide-react": "0.475.0",
+    "@google/genai": "1.3.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
