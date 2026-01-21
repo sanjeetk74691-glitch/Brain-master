@@ -29,7 +29,7 @@ import { GameState, View, Question } from './types';
 import { QUESTIONS } from './constants/questions';
 import { UI_STRINGS } from './constants/translations';
 
-const STORAGE_KEY = 'brain_test_lite_v5';
+const STORAGE_KEY = 'brain_test_lite_v6';
 
 const SOUNDS = {
   click: 'https://cdn.pixabay.com/audio/2022/03/15/audio_783ef5a7ee.mp3',
@@ -115,8 +115,6 @@ export default function App() {
   }, [gameState.currentLevel, view, aiQuestion]);
 
   const generateAIChallenge = async () => {
-    // Unlimited mode should be accessible as long as coins aren't completely empty, 
-    // or we can allow a small cost.
     if (gameState.coins < 10) {
       alert(t.notEnoughCoins);
       setView('HOME');
@@ -135,9 +133,9 @@ export default function App() {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: "Create a unique, clever brain-teaser MCQ puzzle. Provide translations in English and Hindi.",
+        contents: "Create a unique and clever brain-teaser MCQ puzzle. Provide translations in English and Hindi.",
         config: {
-          systemInstruction: "You are a creative puzzle master. Generate a Multiple Choice Question (MCQ) brain teaser. Return ONLY the JSON object. The 'answer' field must be an integer (0, 1, 2, or 3) representing the index of the correct option.",
+          systemInstruction: "You are a creative puzzle master. Generate a Multiple Choice Question (MCQ) brain teaser. Return ONLY a valid JSON object. No markdown formatting. The 'answer' field must be an integer (0-3) representing the index of the correct option.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -145,10 +143,7 @@ export default function App() {
               type: { type: Type.STRING },
               prompt: { 
                 type: Type.OBJECT, 
-                properties: { 
-                  en: { type: Type.STRING }, 
-                  hi: { type: Type.STRING } 
-                },
+                properties: { en: { type: Type.STRING }, hi: { type: Type.STRING } },
                 required: ["en", "hi"]
               },
               options: { 
@@ -162,10 +157,7 @@ export default function App() {
               answer: { type: Type.INTEGER },
               hint: { 
                 type: Type.OBJECT, 
-                properties: { 
-                  en: { type: Type.STRING }, 
-                  hi: { type: Type.STRING } 
-                },
+                properties: { en: { type: Type.STRING }, hi: { type: Type.STRING } },
                 required: ["en", "hi"]
               }
             },
@@ -174,15 +166,16 @@ export default function App() {
         }
       });
 
-      const text = response.text;
-      if (!text) throw new Error("AI returned empty text");
-
+      let text = response.text || "";
+      // Strip any markdown backticks if the model ignored instructions
+      text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      
       const data = JSON.parse(text);
       setAiQuestion({ ...data, id: `ai_${Date.now()}`, isAI: true });
       setGameState(p => ({ ...p, coins: p.coins - 10 }));
     } catch (err) {
-      console.error("AI Generation Error:", err);
-      alert("AI Lab connection error. Returning to Home.");
+      console.error("AI Generation Error Details:", err);
+      alert("AI Lab connection error. Check your API configuration.");
       setView('HOME');
     } finally {
       setIsGenerating(false);
@@ -229,7 +222,7 @@ export default function App() {
     setInputText('');
     setShowHint(false);
     if (view === 'AI_LAB') {
-      generateAIChallenge(); // Loop for unlimited play
+      generateAIChallenge();
     } else {
       setGameState(p => ({ ...p, currentLevel: p.currentLevel + 1 }));
     }
@@ -317,28 +310,6 @@ export default function App() {
              <Info className="w-5 h-5 text-slate-400" />
              <span className="text-xs font-black text-slate-600 uppercase">{t.about}</span>
           </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (view === 'ABOUT') {
-    return (
-      <div className="flex flex-col min-h-screen bg-slate-50">
-        <Header title={t.about} />
-        <div className="p-6 flex-1 overflow-y-auto space-y-4 pb-20">
-          <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
-             <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2"><Brain className="w-5 h-5 text-blue-500" /> Brain Test Lite</h3>
-             <p className="text-xs text-slate-500 leading-relaxed">{t.aboutText}</p>
-          </div>
-          <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
-             <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider"><ShieldCheck className="w-5 h-5 text-emerald-500" /> {t.privacyPolicy}</h3>
-             <p className="text-[11px] text-slate-500 leading-relaxed whitespace-pre-line">{t.privacyContent}</p>
-          </div>
-          <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
-             <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider"><FileText className="w-5 h-5 text-amber-500" /> {t.termsOfService}</h3>
-             <p className="text-[11px] text-slate-500 leading-relaxed whitespace-pre-line">{t.termsContent}</p>
-          </div>
         </div>
       </div>
     );
