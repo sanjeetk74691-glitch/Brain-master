@@ -1,4 +1,3 @@
-
 import { Question } from '../types';
 
 export const QUESTIONS: Question[] = [
@@ -187,6 +186,171 @@ export const QUESTIONS: Question[] = [
     hint: {
       en: "It is located in Agra, India.",
       hi: "यह आगरा, भारत में स्थित है।"
+    }
+  },
+  {
+    id: 12,
+    type: 'LOGIC',
+    prompt: {
+      en: "Which number comes next: 2, 4, 8, 16, ?",
+      hi: "अगली संख्या कौन सी है: 2, 4, 8, 16, ?"
+    },
+    options: {
+      en: ["20", "24", "32", "64"],
+      hi: ["20", "24", "32", "64"]
+    },
+    answer: 2,
+    hint: {
+      en: "It's doubling every time.",
+      hi: "यह हर बार दोगुना हो रहा है।"
+    }
+  },
+  {
+    id: 13,
+    type: 'IMAGE_MCQ',
+    imageUrl: "https://images.unsplash.com/photo-1444464666168-49d633b86747?auto=format&fit=crop&q=80&w=400",
+    prompt: {
+      en: "Identify this beautiful creature.",
+      hi: "इस सुंदर जीव को पहचानें।"
+    },
+    options: {
+      en: ["Eagle", "Sparrow", "Kingfisher", "Parrot"],
+      hi: ["बाज", "गौरैया", "किंगफिशर", "तोता"]
+    },
+    answer: 2,
+    hint: {
+      en: "Known for fishing in water.",
+      hi: "पानी में मछली पकड़ने के लिए जाना जाता है।"
+    }
+  },
+  {
+    id: 14,
+    type: 'MCQ',
+    prompt: {
+      en: "The more of this there is, the less you see. What is it?",
+      hi: "यह जितना अधिक होता है, उतना ही कम आप देख पाते हैं। यह क्या है?"
+    },
+    options: {
+      en: ["Light", "Fog", "Darkness", "Air"],
+      hi: ["प्रकाश", "कोहरा", "अंधेरा", "हवा"]
+    },
+    answer: 2,
+    hint: {
+      en: "Opposite of light.",
+      hi: "प्रकाश का विलोम।"
+    }
+  },
+  {
+    id: 15,
+    type: 'FILL_BLANKS',
+    prompt: {
+      en: "I follow you all day but don't have a body. What am I?",
+      hi: "मैं दिन भर आपके पीछे चलता हूँ लेकिन मेरा शरीर नहीं है। मैं क्या हूँ?"
+    },
+    answer: "Shadow",
+    hint: {
+      en: "It appears when there is light.",
+      hi: "यह तब दिखाई देता है जब प्रकाश होता है।"
+    }
+  },
+  {
+    id: 16,
+    type: 'TRUE_FALSE',
+    prompt: {
+      en: "The Earth is the largest planet in the Solar System.",
+      hi: "पृथ्वी सौर मंडल का सबसे बड़ा ग्रह है।"
+    },
+    options: {
+      en: ["True", "False"],
+      hi: ["सही", "गलत"]
+    },
+    answer: 1,
+    hint: {
+      en: "Jupiter is much larger.",
+      hi: "बृहस्पति बहुत बड़ा है।"
+    }
+  },
+  {
+    id: 17,
+    type: 'IMAGE_MCQ',
+    imageUrl: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&q=80&w=400",
+    prompt: {
+      en: "What device is shown in this picture?",
+      hi: "इस चित्र में कौन सा उपकरण दिखाया गया है?"
+    },
+    options: {
+      en: ["Monitor", "Laptop", "Keyboard", "Mouse"],
+      hi: ["मॉनिटर", "लैपटॉप", "कीबोर्ड", "माउस"]
+    },
+    answer: 1,
+    hint: {
+      en: "A portable computer.",
+      hi: "एक पोर्टेबल कंप्यूटर।"
+    }
+  },
+  {
+    id: 18,
+    type: 'MCQ',
+    prompt: {
+      en: "What month of the year has 28 days?",
+      hi: "साल के किस महीने में 28 दिन होते हैं?"
+    },
+    options: {
+      en: ["Only February", "All of them", "Every leap year", "None"],
+      hi: ["केवल फरवरी", "वे सभी", "हर लीप वर्ष", "कोई नहीं"]
+    },
+    answer: 1,
+    hint: {
+      en: "Tricky question! Every month has at least 28 days.",
+      hi: "पेचीदा सवाल! हर महीने में कम से कम 28 दिन होते हैं।"
+    }
+  },
+  {
+    id: 19,
+    type: 'LOGIC',
+    prompt: {
+      en: "If 1=3, 2=3, 3=5, 4=4, 5=4, then 6=?",
+      hi: "यदि 1=3, 2=3, 3=5, 4=4, 5=4, तो 6=?"
+    },
+    options: {
+      en: ["3", "4", "5", "6"],
+      hi: ["3", "4", "5", "6"]
+    },
+    answer: 0,
+    hint: {
+      en: "Count the number of letters in the English word for the digit.",
+      hi: "अंक के अंग्रेजी शब्द में अक्षरों की संख्या गिनें (SIX has 3 letters)."
+    }
+  },
+  {
+    id: 20,
+    type: 'FILL_BLANKS',
+    prompt: {
+      en: "What has many keys but can't open a single lock?",
+      hi: "किसके पास बहुत सारी चाबियाँ हैं लेकिन वह एक भी ताला नहीं खोल सकता?"
+    },
+    answer: "Piano",
+    hint: {
+      en: "It makes music.",
+      hi: "यह संगीत बनाता है।"
+    }
+  },
+  {
+    id: 21,
+    type: 'IMAGE_MCQ',
+    imageUrl: "https://images.unsplash.com/photo-1495446815901-a7297e633e8d?auto=format&fit=crop&q=80&w=400",
+    prompt: {
+      en: "What are these objects?",
+      hi: "ये वस्तुएं क्या हैं?"
+    },
+    options: {
+      en: ["Books", "Tablets", "Phones", "Magazines"],
+      hi: ["किताबें", "टैबलेट", "फोन", "पत्रिकाएं"]
+    },
+    answer: 0,
+    hint: {
+      en: "You read them to gain knowledge.",
+      hi: "आप ज्ञान प्राप्त करने के लिए उन्हें पढ़ते हैं।"
     }
   }
 ];
