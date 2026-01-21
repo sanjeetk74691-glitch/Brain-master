@@ -5,14 +5,22 @@ export type QuestionType = 'MCQ' | 'TRUE_FALSE' | 'LOGIC' | 'IMAGE_MCQ' | 'FILL_
 
 export interface User {
   name: string;
-  email: string;
-  photo: string | null;
+  avatar: string;
+  age: number;
 }
 
 export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: number;
+}
+
+export interface LeaderboardEntry {
+  name: string;
+  avatar: string;
+  score: number;
+  iq: number;
+  isUser?: boolean;
 }
 
 export interface Question {
@@ -39,15 +47,25 @@ export interface Question {
   };
 }
 
+export interface Level {
+  id: number;
+  questions: Question[];
+}
+
 export interface GameState {
   user: User | null;
   coins: number;
   currentLevel: number;
-  completedLevels: (number | string)[];
+  currentQuestionIndex: number; // Progress within the 10-question level
+  completedLevels: number[];
   language: Language;
   soundEnabled: boolean;
   lastDailyBonus: number | null;
   brainScore: number;
+  isLoggedIn: boolean;
+  leaderboard: LeaderboardEntry[];
+  calculatedIQ: number;
+  chatHistory: ChatMessage[];
 }
 
-export type View = 'SPLASH' | 'LOGIN' | 'HOME' | 'PLAY' | 'LEVELS' | 'SETTINGS' | 'ABOUT' | 'AI_LAB' | 'CHAT';
+export type View = 'SPLASH' | 'LOGIN' | 'SCANNER' | 'ONBOARDING_NAME' | 'ONBOARDING_AGE' | 'HOME' | 'PLAY' | 'LEVELS' | 'SETTINGS' | 'ABOUT' | 'AI_LAB' | 'CHAT' | 'LEADERBOARD' | 'TEST_RESULT';
