@@ -1,3 +1,4 @@
+
 import { Question } from '../types';
 
 export const QUESTIONS: Question[] = [
@@ -20,19 +21,19 @@ export const QUESTIONS: Question[] = [
   },
   {
     id: 2,
-    type: 'MATCHING',
+    type: 'MCQ',
     prompt: {
-      en: "Match the animal with its sound!",
-      hi: "जानवर का उसकी आवाज से मिलान करें!"
+      en: "What sound does a Lion make?",
+      hi: "शेर कैसी आवाज निकालता है?"
     },
-    pairs: {
-      en: [["Dog", "Bark"], ["Cat", "Meow"], ["Lion", "Roar"]],
-      hi: [["कुत्ता", "भोंकना"], ["बिल्ली", "म्याऊ"], ["शेर", "दहाड़ना"]]
+    options: {
+      en: ["Bark", "Meow", "Roar", "Hiss"],
+      hi: ["भोंकना", "म्याऊ", "दहाड़ना", "फुफकारना"]
     },
-    answer: "MATCH_ALL",
+    answer: 2,
     hint: {
-      en: "Think about the sounds they make.",
-      hi: "उनके द्वारा की जाने वाली आवाजों के बारे में सोचें।"
+      en: "It's a very loud sound.",
+      hi: "यह बहुत तेज़ आवाज़ है।"
     }
   },
   {
@@ -71,19 +72,19 @@ export const QUESTIONS: Question[] = [
   },
   {
     id: 5,
-    type: 'MATCHING',
+    type: 'MCQ',
     prompt: {
-      en: "Match the Capital with the Country",
-      hi: "राजधानी का देश के साथ मिलान करें"
+      en: "What is the capital of France?",
+      hi: "फ्रांस की राजधानी क्या है?"
     },
-    pairs: {
-      en: [["India", "New Delhi"], ["France", "Paris"], ["Japan", "Tokyo"]],
-      hi: [["भारत", "नई दिल्ली"], ["फ्रांस", "पेरिस"], ["जापान", "टोक्यो"]]
+    options: {
+      en: ["London", "Berlin", "Paris", "Madrid"],
+      hi: ["लंदन", "बर्लिन", "पेरिस", "मैड्रिड"]
     },
-    answer: "MATCH_ALL",
+    answer: 2,
     hint: {
-      en: "These are major world capitals.",
-      hi: "ये दुनिया की प्रमुख राजधानियाँ हैं।"
+      en: "Home of the Eiffel Tower.",
+      hi: "एफिल टॉवर का घर।"
     }
   },
   {
@@ -351,6 +352,157 @@ export const QUESTIONS: Question[] = [
     hint: {
       en: "You read them to gain knowledge.",
       hi: "आप ज्ञान प्राप्त करने के लिए उन्हें पढ़ते हैं।"
+    }
+  },
+  {
+    id: 22,
+    type: 'MCQ',
+    prompt: {
+      en: "I am light as a feather, yet the strongest man can't hold me for much more than a minute. What am I?",
+      hi: "मैं पंख की तरह हल्का हूँ, फिर भी सबसे ताकतवर आदमी मुझे एक मिनट से ज्यादा नहीं रोक सकता। मैं क्या हूँ?"
+    },
+    options: {
+      en: ["Breath", "Water", "A Stone", "Cloud"],
+      hi: ["साँस", "पानी", "पत्थर", "बादल"]
+    },
+    answer: 0,
+    hint: {
+      en: "You do it every second.",
+      hi: "आप इसे हर सेकंड करते हैं।"
+    }
+  },
+  {
+    id: 23,
+    type: 'TRUE_FALSE',
+    prompt: {
+      en: "Does sound travel faster in water than in air?",
+      hi: "क्या ध्वनि हवा की तुलना में पानी में अधिक तेज़ी से यात्रा करती है?"
+    },
+    options: {
+      en: ["True", "False"],
+      hi: ["सही", "गलत"]
+    },
+    answer: 0,
+    hint: {
+      en: "Water is denser than air.",
+      hi: "पानी हवा से सघन होता है।"
+    }
+  },
+  {
+    id: 24,
+    type: 'IMAGE_MCQ',
+    imageUrl: "https://images.unsplash.com/photo-1528642463367-1d30f31fbb72?auto=format&fit=crop&q=80&w=400",
+    prompt: {
+      en: "What is this fruit called?",
+      hi: "इस फल को क्या कहा जाता है?"
+    },
+    options: {
+      en: ["Apple", "Orange", "Kiwi", "Mango"],
+      hi: ["सेब", "संतरा", "कीवी", "आम"]
+    },
+    answer: 2,
+    hint: {
+      en: "Green on the inside, fuzzy on the outside.",
+      hi: "अंदर से हरा, बाहर से रोएंदार।"
+    }
+  },
+  {
+    id: 25,
+    type: 'LOGIC',
+    prompt: {
+      en: "If you divide 30 by half and add 10, what is the answer?",
+      hi: "यदि आप 30 को आधे से विभाजित करते हैं और 10 जोड़ते हैं, तो उत्तर क्या होगा?"
+    },
+    options: {
+      en: ["25", "40", "70", "50"],
+      hi: ["25", "40", "70", "50"]
+    },
+    answer: 2,
+    hint: {
+      en: "Dividing by half (0.5) is the same as multiplying by 2!",
+      hi: "आधे (0.5) से विभाजित करना 2 से गुणा करने के समान है!"
+    }
+  },
+  {
+    id: 26,
+    type: 'FILL_BLANKS',
+    prompt: {
+      en: "What building has the most stories?",
+      hi: "किस इमारत में सबसे अधिक कहानियाँ (मंजिलें) होती हैं?"
+    },
+    answer: "Library",
+    hint: {
+      en: "Think about 'stories' in books.",
+      hi: "किताबों वाली 'कहानियों' के बारे में सोचें।"
+    }
+  },
+  {
+    id: 27,
+    type: 'MCQ',
+    prompt: {
+      en: "What begins with T, ends with T, and has T in it?",
+      hi: "क्या T से शुरू होता है, T पर खत्म होता है, और इसमें T होता है?"
+    },
+    options: {
+      en: ["Teapot", "Train", "Target", "Toast"],
+      hi: ["चायदानी", "ट्रेन", "लक्ष्य", "टोस्ट"]
+    },
+    answer: 0,
+    hint: {
+      en: "It holds tea.",
+      hi: "इसमें चाय होती है।"
+    }
+  },
+  {
+    id: 28,
+    type: 'TRUE_FALSE',
+    prompt: {
+      en: "Is an octopus a mammal?",
+      hi: "क्या ऑक्टोपस एक स्तनधारी है?"
+    },
+    options: {
+      en: ["True", "False"],
+      hi: ["सही", "गलत"]
+    },
+    answer: 1,
+    hint: {
+      en: "It lays eggs.",
+      hi: "यह अंडे देता है।"
+    }
+  },
+  {
+    id: 29,
+    type: 'IMAGE_MCQ',
+    imageUrl: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=400",
+    prompt: {
+      en: "Identify this dish.",
+      hi: "इस व्यंजन को पहचानें।"
+    },
+    options: {
+      en: ["Pizza", "Salad", "Steak", "Pasta"],
+      hi: ["पिज्जा", "सलाद", "स्टेक", "पास्ता"]
+    },
+    answer: 1,
+    hint: {
+      en: "Healthy and green.",
+      hi: "स्वस्थ और हरा।"
+    }
+  },
+  {
+    id: 30,
+    type: 'MCQ',
+    prompt: {
+      en: "Which state of India is known as the 'Land of Five Rivers'?",
+      hi: "भारत के किस राज्य को 'पांच नदियों की भूमि' कहा जाता है?"
+    },
+    options: {
+      en: ["Haryana", "Punjab", "Gujarat", "Rajasthan"],
+      hi: ["हरियाणा", "पंजाब", "गुजरात", "राजस्थान"]
+    },
+    answer: 1,
+    hint: {
+      en: "Famous for Golden Temple.",
+      hi: "स्वर्ण मंदिर के लिए प्रसिद्ध।"
     }
   }
 ];

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Settings, 
@@ -133,8 +134,9 @@ export default function App() {
         If MCQ, provide 4 options.
         Example JSON:
         {
-          "type": "FILL_BLANKS",
-          "prompt": { "en": "What has to be broken before you can use it?", "hi": "इस्तेमाल करने से पहले क्या तोड़ना पड़ता है?" },
+          "type": "MCQ",
+          "prompt": { "en": "What month has to be broken before you can use it?", "hi": "इस्तेमाल करने से पहले क्या तोड़ना पड़ता है?" },
+          "options": { "en": ["Egg", "Glass", "Mirror", "Promise"], "hi": ["अंडा", "ग्लास", "आईना", "वादा"] },
           "answer": "Egg",
           "hint": { "en": "Common breakfast item", "hi": "नाश्ते की चीज़" }
         }`,
@@ -175,11 +177,24 @@ export default function App() {
   const handleAnswer = (val: number | string) => {
     if (feedback.show) return;
 
-    const isCorrect = typeof val === 'number' 
-      ? val === currentQ.answer 
-      : val.toString().toLowerCase().trim() === currentQ.answer.toString().toLowerCase().trim();
+    let isCorrect = false;
 
-    if (typeof val === 'number') setSelectedIdx(val);
+    if (typeof val === 'number') {
+      setSelectedIdx(val);
+      // Logic for MCQ/LOGIC/IMAGE_MCQ
+      if (typeof currentQ.answer === 'number') {
+        isCorrect = val === currentQ.answer;
+      } else {
+        // Handle AI string answers in MCQ
+        const optEn = currentQ.options?.en[val] || '';
+        const optHi = currentQ.options?.hi[val] || '';
+        const ans = currentQ.answer.toString().toLowerCase().trim();
+        isCorrect = optEn.toLowerCase().trim() === ans || optHi.toLowerCase().trim() === ans;
+      }
+    } else {
+      // Logic for FILL_BLANKS
+      isCorrect = val.toString().toLowerCase().trim() === currentQ.answer.toString().toLowerCase().trim();
+    }
 
     if (isCorrect) {
       playSound('correct');
@@ -311,6 +326,40 @@ export default function App() {
               {t.reset}
             </button>
           </div>
+          <button onClick={() => changeView('ABOUT')} className="w-full py-4 bg-white rounded-xl border border-slate-100 shadow-sm flex items-center justify-center gap-3 active:scale-95">
+             <Info className="w-5 h-5 text-slate-400" />
+             <span className="text-xs font-black text-slate-600 uppercase">{t.about}</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'ABOUT') {
+    return (
+      <div className="flex flex-col min-h-screen bg-slate-50">
+        <Header title={t.about} />
+        <div className="p-6 flex-1 overflow-y-auto space-y-4 pb-20">
+          <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
+             <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2">
+                <Brain className="w-5 h-5 text-blue-500" /> Brain Test Lite
+             </h3>
+             <p className="text-xs text-slate-500 leading-relaxed">{t.aboutText}</p>
+          </div>
+
+          <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
+             <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
+                <ShieldCheck className="w-5 h-5 text-emerald-500" /> {t.privacyPolicy}
+             </h3>
+             <p className="text-[11px] text-slate-500 leading-relaxed whitespace-pre-line">{t.privacyContent}</p>
+          </div>
+
+          <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
+             <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
+                <FileText className="w-5 h-5 text-amber-500" /> {t.termsOfService}
+             </h3>
+             <p className="text-[11px] text-slate-500 leading-relaxed whitespace-pre-line">{t.termsContent}</p>
+          </div>
         </div>
       </div>
     );
@@ -374,7 +423,7 @@ export default function App() {
                 onClick={() => { changeView('AI_LAB'); generateAIChallenge(); }} 
                 className="w-full py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black text-sm flex items-center justify-center gap-3 active:scale-95"
               >
-                <Zap className="w-5 h-5 fill-amber-400 text-amber-400" /> AI Lab
+                <Zap className="w-5 h-5 fill-amber-400 text-amber-400" /> AI Challenge Lab
               </button>
 
               <div className="grid grid-cols-2 gap-3">
@@ -477,7 +526,7 @@ export default function App() {
                   <button 
                     key={idx} 
                     onClick={() => handleAnswer(idx)} 
-                    className={`w-full p-4 rounded-2xl font-black text-sm text-left shadow-sm border-2 transition-all active:scale-98 flex items-center justify-between group ${selectedIdx === idx ? (idx === currentQ.answer ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-rose-500 border-rose-600 text-white animate-shake') : 'bg-white border-slate-100 text-slate-700'}`}
+                    className={`w-full p-4 rounded-2xl font-black text-sm text-left shadow-sm border-2 transition-all active:scale-98 flex items-center justify-between group ${selectedIdx === idx ? (idx === currentQ.answer || (currentQ.options?.en[idx] || '').toLowerCase() === currentQ.answer.toString().toLowerCase() || (currentQ.options?.hi[idx] || '').toLowerCase() === currentQ.answer.toString().toLowerCase() ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-rose-500 border-rose-600 text-white animate-shake') : 'bg-white border-slate-100 text-slate-700'}`}
                   >
                     <span className="flex-1 pr-4">{opt}</span>
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] border ${selectedIdx === idx ? 'bg-white/20 border-white/40' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
