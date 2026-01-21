@@ -21,7 +21,8 @@ import {
   Volume2,
   VolumeX,
   X,
-  Gift
+  Gift,
+  Image as ImageIcon
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { GameState, View, Question } from './types';
@@ -503,9 +504,13 @@ export default function App() {
       ) : (
         <div className="p-8 flex-1 flex flex-col max-w-md mx-auto w-full overflow-y-auto pb-40">
           <div className="bg-white p-10 rounded-[3.5rem] shadow-xl border border-slate-100 mb-8 flex flex-col items-center text-center relative overflow-hidden ring-4 ring-white">
-              {currentQ.isAI && (
+              {currentQ.isAI ? (
                 <div className="absolute top-4 right-4 bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-[9px] font-black border border-indigo-100 uppercase tracking-tighter flex items-center gap-1">
                   <Zap className="w-3 h-3 fill-current" /> Generative
+                </div>
+              ) : currentQ.type === 'IMAGE_MCQ' && (
+                <div className="absolute top-4 left-4 bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-[9px] font-black border border-blue-100 uppercase tracking-tighter flex items-center gap-1">
+                  <ImageIcon className="w-3 h-3" /> {t.visualQuest}
                 </div>
               )}
               {currentQ.imageUrl && (

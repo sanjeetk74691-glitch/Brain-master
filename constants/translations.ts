@@ -37,7 +37,8 @@ export const UI_STRINGS = {
     brainScore: "Brain Score",
     iqLabel: "Calculated IQ",
     unlimited: "Endless Mode",
-    disclaimer: "Disclaimer: This app is not a professional medical test. Virtual coins only."
+    disclaimer: "Disclaimer: This app is not a professional medical test. Virtual coins only.",
+    visualQuest: "Visual Quest"
   },
   hi: {
     appName: "ब्रेन टेस्ट लाइट",
@@ -76,6 +77,7 @@ export const UI_STRINGS = {
     brainScore: "ब्रेन स्कोर",
     iqLabel: "आपका IQ",
     unlimited: "अनलिमिटेड मोड",
-    disclaimer: "अस्वीकरण: यह ऐप एक पेशेवर चिकित्सा परीक्षण नहीं है।"
+    disclaimer: "अस्वीकरण: यह ऐप एक पेशेवर चिकित्सा परीक्षण नहीं है।",
+    visualQuest: "दृश्य चुनौती"
   }
 };

@@ -134,5 +134,59 @@ export const QUESTIONS: Question[] = [
       en: "Shhh...",
       hi: "शशश..."
     }
+  },
+  {
+    id: 9,
+    type: 'IMAGE_MCQ',
+    imageUrl: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=400",
+    prompt: {
+      en: "What is the main subject of this image?",
+      hi: "इस चित्र का मुख्य विषय क्या है?"
+    },
+    options: {
+      en: ["Microchip", "Chocolate Bar", "Skyscraper", "City Map"],
+      hi: ["माइक्रोचिप", "चॉकलेट बार", "गगनचुंबी इमारत", "शहर का नक्शा"]
+    },
+    answer: 0,
+    hint: {
+      en: "It's the brain of a computer.",
+      hi: "यह कंप्यूटर का दिमाग है।"
+    }
+  },
+  {
+    id: 10,
+    type: 'IMAGE_MCQ',
+    imageUrl: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?auto=format&fit=crop&q=80&w=400",
+    prompt: {
+      en: "Which instrument is shown here?",
+      hi: "यहाँ कौन सा वाद्य यंत्र दिखाया गया है?"
+    },
+    options: {
+      en: ["Violin", "Guitar", "Piano", "Drums"],
+      hi: ["वायलिन", "गिटार", "पियानो", "ड्रम"]
+    },
+    answer: 1,
+    hint: {
+      en: "It has six strings.",
+      hi: "इसमें छह तार होते हैं।"
+    }
+  },
+  {
+    id: 11,
+    type: 'IMAGE_MCQ',
+    imageUrl: "https://images.unsplash.com/photo-1564507592333-c60657eaa0ae?auto=format&fit=crop&q=80&w=400",
+    prompt: {
+      en: "Identify this famous world landmark.",
+      hi: "इस प्रसिद्ध विश्व स्थल को पहचानें।"
+    },
+    options: {
+      en: ["Eiffel Tower", "Taj Mahal", "Pyramids", "Colosseum"],
+      hi: ["एफिल टॉवर", "ताज महल", "पिरामिड", "कोलोजियम"]
+    },
+    answer: 1,
+    hint: {
+      en: "It is located in Agra, India.",
+      hi: "यह आगरा, भारत में स्थित है।"
+    }
   }
 ];
