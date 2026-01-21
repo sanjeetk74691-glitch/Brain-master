@@ -17,7 +17,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { GameState, View, Question } from './types';
 import { QUESTIONS } from './constants/questions';
 
-const STORAGE_KEY = 'brain_test_lite_v3';
+const STORAGE_KEY = 'brain_test_lite_v3_stable';
 
 const INITIAL_STATE: GameState = {
   user: { name: "Explorer", email: "", photo: null },
@@ -72,7 +72,7 @@ export default function App() {
   const generateAIQuestion = async () => {
     const apiKey = process.env.API_KEY;
     
-    if (!apiKey || apiKey === '') {
+    if (!apiKey) {
       alert("AI Connection Failed: API Key not found. Please set your Gemini API key in Vercel Environment Variables.");
       return;
     }
@@ -81,12 +81,12 @@ export default function App() {
     setAiQuestion(null);
     setSelectedIdx(null);
     setInputText('');
-    setFeedback({ ...feedback, show: false });
+    setFeedback({ type: 'correct', show: false });
 
     try {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash-exp', // Using a stable available version for lite tasks
+        model: 'gemini-3-flash-preview',
         contents: "Create a tricky lateral thinking brain teaser. Return it as a JSON object with properties: type (MCQ or FILL_BLANKS), prompt (object with en and hi keys), options (object with en and hi keys, if MCQ), answer (index if MCQ, string if FILL_BLANKS), hint (object with en and hi keys). Keep it funny and surprising.",
         config: {
           responseMimeType: "application/json",
@@ -122,10 +122,7 @@ export default function App() {
         }
       });
 
-      const text = response.text;
-      if (!text) throw new Error("Empty AI response");
-      
-      const data = JSON.parse(text);
+      const data = JSON.parse(response.text);
       setAiQuestion({
         ...data,
         id: `ai_${Date.now()}`,
@@ -187,7 +184,7 @@ export default function App() {
           <Brain className="w-12 h-12 text-blue-600" />
         </div>
         <h1 className="text-5xl font-black mb-2 tracking-tighter italic">Brain Test</h1>
-        <p className="text-blue-200 text-[10px] font-black uppercase tracking-[0.5em] mb-16 opacity-80">STABLE v2.1</p>
+        <p className="text-blue-200 text-[10px] font-black uppercase tracking-[0.5em] mb-16 opacity-80">STABLE DEPLOY v2.2</p>
         <button onClick={() => setView('HOME')} className="w-full max-w-xs py-6 bg-white text-blue-600 rounded-[2rem] font-black text-xl shadow-2xl active:scale-95 flex items-center justify-center gap-3 transition-transform">
           <Play className="w-6 h-6 fill-current" /> Start Game
         </button>
