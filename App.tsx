@@ -29,7 +29,7 @@ import { GameState, View, Question } from './types';
 import { QUESTIONS } from './constants/questions';
 import { UI_STRINGS } from './constants/translations';
 
-const STORAGE_KEY = 'brain_test_lite_v4';
+const STORAGE_KEY = 'brain_test_lite_v5';
 
 const SOUNDS = {
   click: 'https://cdn.pixabay.com/audio/2022/03/15/audio_783ef5a7ee.mp3',
@@ -115,6 +115,8 @@ export default function App() {
   }, [gameState.currentLevel, view, aiQuestion]);
 
   const generateAIChallenge = async () => {
+    // Unlimited mode should be accessible as long as coins aren't completely empty, 
+    // or we can allow a small cost.
     if (gameState.coins < 10) {
       alert(t.notEnoughCoins);
       setView('HOME');
@@ -130,47 +132,57 @@ export default function App() {
     playSound('magic');
     
     try {
-      const apiKey = process.env.API_KEY;
-      if (!apiKey) {
-        throw new Error("API_KEY is missing");
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: "Generate a unique brain-teaser. Return ONLY a JSON object. No Markdown. No backticks. Properties: type (string 'MCQ'), prompt (object with en/hi strings), options (object with en/hi string arrays), answer (integer index 0-3), hint (object with en/hi strings).",
+        contents: "Create a unique, clever brain-teaser MCQ puzzle. Provide translations in English and Hindi.",
         config: {
+          systemInstruction: "You are a creative puzzle master. Generate a Multiple Choice Question (MCQ) brain teaser. Return ONLY the JSON object. The 'answer' field must be an integer (0, 1, 2, or 3) representing the index of the correct option.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               type: { type: Type.STRING },
-              prompt: { type: Type.OBJECT, properties: { en: { type: Type.STRING }, hi: { type: Type.STRING } } },
+              prompt: { 
+                type: Type.OBJECT, 
+                properties: { 
+                  en: { type: Type.STRING }, 
+                  hi: { type: Type.STRING } 
+                },
+                required: ["en", "hi"]
+              },
               options: { 
                 type: Type.OBJECT, 
                 properties: { 
                   en: { type: Type.ARRAY, items: { type: Type.STRING } },
                   hi: { type: Type.ARRAY, items: { type: Type.STRING } }
-                } 
+                },
+                required: ["en", "hi"]
               },
               answer: { type: Type.INTEGER },
-              hint: { type: Type.OBJECT, properties: { en: { type: Type.STRING }, hi: { type: Type.STRING } } }
+              hint: { 
+                type: Type.OBJECT, 
+                properties: { 
+                  en: { type: Type.STRING }, 
+                  hi: { type: Type.STRING } 
+                },
+                required: ["en", "hi"]
+              }
             },
             required: ["type", "prompt", "options", "answer", "hint"]
           }
         }
       });
 
-      let jsonStr = response.text || "";
-      // Strip markdown if AI included it anyway
-      jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
-      
-      const data = JSON.parse(jsonStr);
+      const text = response.text;
+      if (!text) throw new Error("AI returned empty text");
+
+      const data = JSON.parse(text);
       setAiQuestion({ ...data, id: `ai_${Date.now()}`, isAI: true });
       setGameState(p => ({ ...p, coins: p.coins - 10 }));
     } catch (err) {
       console.error("AI Generation Error:", err);
-      alert("AI Lab error. Check your connection or API configuration.");
+      alert("AI Lab connection error. Returning to Home.");
       setView('HOME');
     } finally {
       setIsGenerating(false);
@@ -217,7 +229,7 @@ export default function App() {
     setInputText('');
     setShowHint(false);
     if (view === 'AI_LAB') {
-      generateAIChallenge();
+      generateAIChallenge(); // Loop for unlimited play
     } else {
       setGameState(p => ({ ...p, currentLevel: p.currentLevel + 1 }));
     }
@@ -443,7 +455,9 @@ export default function App() {
               {currentQ.imageUrl && (
                 <div className="mb-4 w-full h-40 rounded-[1.5rem] overflow-hidden bg-slate-50"><img src={currentQ.imageUrl} className="w-full h-full object-cover" alt="Puzzle" /></div>
               )}
-              <h3 className="text-lg font-black text-slate-800 leading-snug px-2">{currentQ.prompt[gameState.language] || currentQ.prompt.en}</h3>
+              <h3 className="text-lg font-black text-slate-800 leading-snug px-2">
+                {currentQ.prompt[gameState.language] || currentQ.prompt.en}
+              </h3>
           </div>
           <div className="space-y-3">
               {currentQ.type === 'FILL_BLANKS' ? (
