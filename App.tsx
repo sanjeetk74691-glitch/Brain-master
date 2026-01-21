@@ -22,7 +22,8 @@ import {
   VolumeX,
   X,
   Gift,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Flame
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { GameState, View, Question } from './types';
@@ -35,7 +36,8 @@ const SOUNDS = {
   click: 'https://cdn.pixabay.com/audio/2022/03/15/audio_783ef5a7ee.mp3',
   correct: 'https://cdn.pixabay.com/audio/2021/08/04/audio_bbd1349f44.mp3',
   wrong: 'https://cdn.pixabay.com/audio/2022/03/10/audio_c35278d32b.mp3',
-  bonus: 'https://cdn.pixabay.com/audio/2021/08/04/audio_c1913f99a5.mp3'
+  bonus: 'https://cdn.pixabay.com/audio/2021/08/04/audio_c1913f99a5.mp3',
+  magic: 'https://cdn.pixabay.com/audio/2022/03/15/audio_1457814b7e.mp3'
 };
 
 const INITIAL_STATE: GameState = {
@@ -58,6 +60,7 @@ export default function App() {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [inputText, setInputText] = useState('');
   const [showHint, setShowHint] = useState(false);
+  const [aiStreak, setAiStreak] = useState(0);
   const [feedback, setFeedback] = useState<{ type: 'correct' | 'wrong' | null, show: boolean }>({ type: null, show: false });
 
   const t = UI_STRINGS[gameState.language];
@@ -113,9 +116,7 @@ export default function App() {
   }, [gameState.currentLevel, view, aiQuestion]);
 
   const generateAIChallenge = async () => {
-    // entry fee only if they have enough coins. 
-    // To make it "unlimited" and fun, we check coins but maybe reward more.
-    if (gameState.coins < 20) {
+    if (gameState.coins < 10) {
       alert(t.notEnoughCoins);
       setView('HOME');
       return;
@@ -127,24 +128,23 @@ export default function App() {
     setSelectedIdx(null);
     setInputText('');
     setShowHint(false);
+    playSound('magic');
     
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Create a unique, clever brain-teaser puzzle for a game. 
-        It can be a riddle, a logic question, or a math puzzle.
-        Language requirement: Provide BOTH English and Hindi translations.
+        contents: `Create a unique, clever brain-teaser for a puzzle game.
+        Requirement: Provide BOTH English and Hindi translations.
         Response MUST be strictly valid JSON.
-        Type MUST be 'MCQ'. 
-        Provide 4 options.
-        IMPORTANT: The 'answer' field MUST exactly match one of the string values in the 'en' options array.
+        Type MUST be 'MCQ'. Provide 4 options.
+        IMPORTANT: The 'answer' field MUST be an INTEGER representing the correct index (0-3).
         Example JSON:
         {
           "type": "MCQ",
           "prompt": { "en": "What month has to be broken before you can use it?", "hi": "इस्तेमाल करने से पहले क्या तोड़ना पड़ता है?" },
           "options": { "en": ["Egg", "Glass", "Mirror", "Promise"], "hi": ["अंडा", "ग्लास", "आईना", "वादा"] },
-          "answer": "Egg",
+          "answer": 0,
           "hint": { "en": "Common breakfast item", "hi": "नाश्ते की चीज़" }
         }`,
         config: {
@@ -161,7 +161,7 @@ export default function App() {
                   hi: { type: Type.ARRAY, items: { type: Type.STRING } }
                 } 
               },
-              answer: { type: Type.STRING },
+              answer: { type: Type.INTEGER },
               hint: { type: Type.OBJECT, properties: { en: { type: Type.STRING }, hi: { type: Type.STRING } } }
             },
             required: ["type", "prompt", "options", "answer", "hint"]
@@ -171,7 +171,7 @@ export default function App() {
 
       const data = JSON.parse(response.text);
       setAiQuestion({ ...data, id: `ai_${Date.now()}`, isAI: true });
-      setGameState(p => ({ ...p, coins: p.coins - 20 })); // Reduced cost for "unlimited" play
+      setGameState(p => ({ ...p, coins: p.coins - 10 }));
     } catch (err) {
       console.error("AI Generation Error:", err);
       alert("AI Lab encountered an error. Please try Classic Mode.");
@@ -188,33 +188,26 @@ export default function App() {
 
     if (typeof val === 'number') {
       setSelectedIdx(val);
-      // Logic for MCQ/LOGIC/IMAGE_MCQ
-      if (typeof currentQ.answer === 'number') {
-        isCorrect = val === currentQ.answer;
-      } else {
-        // AI Lab specific: compare selected option text with answer string
-        const optEn = (currentQ.options?.en[val] || '').toLowerCase().trim();
-        const optHi = (currentQ.options?.hi[val] || '').toLowerCase().trim();
-        const ans = currentQ.answer.toString().toLowerCase().trim();
-        isCorrect = optEn === ans || optHi === ans;
-      }
+      // Works for both offline and AI questions as long as AI returns integer index
+      isCorrect = val === Number(currentQ.answer);
     } else {
-      // Logic for FILL_BLANKS
       isCorrect = val.toString().toLowerCase().trim() === currentQ.answer.toString().toLowerCase().trim();
     }
 
     if (isCorrect) {
       playSound('correct');
       setFeedback({ type: 'correct', show: true });
+      if (view === 'AI_LAB') setAiStreak(s => s + 1);
       setGameState(p => ({
         ...p,
-        coins: p.coins + 30, // Reward slightly more to keep the AI lab loop sustainable
+        coins: p.coins + (currentQ.isAI ? 40 : 25),
         brainScore: p.brainScore + (currentQ.isAI ? 50 : 10),
         completedLevels: Array.from(new Set([...p.completedLevels, currentQ.id]))
       }));
     } else {
       playSound('wrong');
       setFeedback({ type: 'wrong', show: true });
+      if (view === 'AI_LAB') setAiStreak(0);
       setTimeout(() => {
         setFeedback({ type: null, show: false });
         setSelectedIdx(null);
@@ -229,8 +222,7 @@ export default function App() {
     setInputText('');
     setShowHint(false);
     if (view === 'AI_LAB') {
-      // Instead of going home, we generate another one for "unlimited" feel
-      generateAIChallenge();
+      generateAIChallenge(); // Continuous loop for unlimited play
     } else {
       setGameState(p => ({ ...p, currentLevel: p.currentLevel + 1 }));
     }
@@ -238,6 +230,7 @@ export default function App() {
 
   const changeView = (v: View) => {
     playSound('click');
+    if (v === 'AI_LAB') setAiStreak(0);
     setView(v);
   };
 
@@ -492,6 +485,15 @@ export default function App() {
         </div>
       ) : (
         <div className="p-4 flex-1 flex flex-col max-w-md mx-auto w-full overflow-y-auto pb-32">
+          {view === 'AI_LAB' && (
+            <div className="flex items-center justify-center gap-2 mb-4 animate-in slide-in-from-top-4">
+              <div className="px-4 py-1 bg-rose-50 text-rose-600 rounded-full border border-rose-100 flex items-center gap-2">
+                <Flame className="w-3 h-3 fill-current" />
+                <span className="text-[10px] font-black">STREAK: {aiStreak}</span>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white p-6 rounded-[2rem] shadow-lg border border-slate-100 mb-4 flex flex-col items-center text-center relative overflow-hidden">
               {currentQ.isAI ? (
                 <div className="absolute top-3 right-3 bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full text-[7px] font-black border border-indigo-100 uppercase flex items-center gap-1">
@@ -531,17 +533,7 @@ export default function App() {
                 </div>
               ) : (
                 (currentQ.options?.[gameState.language] || currentQ.options?.en || []).map((opt, idx) => {
-                  let isCorrectStyle = false;
-                  if (selectedIdx === idx) {
-                    if (typeof currentQ.answer === 'number') {
-                      isCorrectStyle = idx === currentQ.answer;
-                    } else {
-                      const optEn = (currentQ.options?.en[idx] || '').toLowerCase().trim();
-                      const optHi = (currentQ.options?.hi[idx] || '').toLowerCase().trim();
-                      const ans = currentQ.answer.toString().toLowerCase().trim();
-                      isCorrectStyle = optEn === ans || optHi === ans;
-                    }
-                  }
+                  let isCorrectStyle = selectedIdx === idx && idx === Number(currentQ.answer);
 
                   return (
                     <button 
@@ -587,8 +579,8 @@ export default function App() {
                 </button>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center bg-white border border-slate-100 rounded-2xl text-[9px] text-slate-300 font-black italic">
-                  <span>Level Goal</span>
-                  <span className="text-[7px] uppercase tracking-tighter opacity-50">Think Outside the Box</span>
+                  <span>Goal: Solve the puzzle</span>
+                  <span className="text-[7px] uppercase tracking-tighter opacity-50">Unlimited AI Mode</span>
                 </div>
               )}
           </div>
