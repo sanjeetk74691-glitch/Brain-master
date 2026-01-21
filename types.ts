@@ -9,6 +9,12 @@ export interface User {
   photo: string | null;
 }
 
+export interface ChatMessage {
+  role: 'user' | 'model';
+  text: string;
+  timestamp: number;
+}
+
 export interface Question {
   id: number | string;
   type: QuestionType;
@@ -44,4 +50,4 @@ export interface GameState {
   brainScore: number;
 }
 
-export type View = 'SPLASH' | 'LOGIN' | 'HOME' | 'PLAY' | 'LEVELS' | 'SETTINGS' | 'ABOUT' | 'AI_LAB';
+export type View = 'SPLASH' | 'LOGIN' | 'HOME' | 'PLAY' | 'LEVELS' | 'SETTINGS' | 'ABOUT' | 'AI_LAB' | 'CHAT';

@@ -37,7 +37,12 @@ export const UI_STRINGS = {
     brainScore: "Brain Score",
     iqLabel: "Calculated IQ",
     unlimited: "Endless Mode",
-    disclaimer: "Disclaimer: This app is not a professional medical test. Virtual coins only."
+    disclaimer: "Disclaimer: This app is not a professional medical test. Virtual coins only.",
+    aiAssistant: "AI Assistant",
+    chatPlaceholder: "Ask me anything...",
+    chatIntro: "I am your Brain Bot. I can help you solve puzzles or explain logic!",
+    typing: "Bot is thinking...",
+    clearChat: "Clear Chat"
   },
   hi: {
     appName: "ब्रेन टेस्ट लाइट",
@@ -76,6 +81,11 @@ export const UI_STRINGS = {
     brainScore: "ब्रेन स्कोर",
     iqLabel: "आपका IQ",
     unlimited: "अनलिमिटेड मोड",
-    disclaimer: "अस्वीकरण: यह ऐप एक पेशेवर चिकित्सा परीक्षण नहीं है।"
+    disclaimer: "अस्वीकरण: यह ऐप एक पेशेवर चिकित्सा परीक्षण नहीं है।",
+    aiAssistant: "AI सहायक",
+    chatPlaceholder: "मुझसे कुछ भी पूछें...",
+    chatIntro: "मैं आपका ब्रेन बॉट हूँ। मैं पहेलियाँ सुलझाने या तर्क समझाने में मदद कर सकता हूँ!",
+    typing: "बॉट सोच रहा है...",
+    clearChat: "चैट साफ़ करें"
   }
 };
