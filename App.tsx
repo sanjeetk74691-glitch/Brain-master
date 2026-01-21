@@ -113,25 +113,32 @@ export default function App() {
   }, [gameState.currentLevel, view, aiQuestion]);
 
   const generateAIChallenge = async () => {
-    if (gameState.coins < 50) {
+    // entry fee only if they have enough coins. 
+    // To make it "unlimited" and fun, we check coins but maybe reward more.
+    if (gameState.coins < 20) {
       alert(t.notEnoughCoins);
+      setView('HOME');
       return;
     }
 
     setIsGenerating(true);
     setAiQuestion(null);
     setFeedback({ type: null, show: false });
+    setSelectedIdx(null);
+    setInputText('');
+    setShowHint(false);
     
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Create a unique, clever brain-teaser puzzle for a game. 
-        It can be a riddle or a logic question.
+        It can be a riddle, a logic question, or a math puzzle.
         Language requirement: Provide BOTH English and Hindi translations.
         Response MUST be strictly valid JSON.
-        Type can be 'FILL_BLANKS' or 'MCQ'. 
-        If MCQ, provide 4 options.
+        Type MUST be 'MCQ'. 
+        Provide 4 options.
+        IMPORTANT: The 'answer' field MUST exactly match one of the string values in the 'en' options array.
         Example JSON:
         {
           "type": "MCQ",
@@ -157,14 +164,14 @@ export default function App() {
               answer: { type: Type.STRING },
               hint: { type: Type.OBJECT, properties: { en: { type: Type.STRING }, hi: { type: Type.STRING } } }
             },
-            required: ["type", "prompt", "answer", "hint"]
+            required: ["type", "prompt", "options", "answer", "hint"]
           }
         }
       });
 
       const data = JSON.parse(response.text);
       setAiQuestion({ ...data, id: `ai_${Date.now()}`, isAI: true });
-      setGameState(p => ({ ...p, coins: p.coins - 50 }));
+      setGameState(p => ({ ...p, coins: p.coins - 20 })); // Reduced cost for "unlimited" play
     } catch (err) {
       console.error("AI Generation Error:", err);
       alert("AI Lab encountered an error. Please try Classic Mode.");
@@ -185,11 +192,11 @@ export default function App() {
       if (typeof currentQ.answer === 'number') {
         isCorrect = val === currentQ.answer;
       } else {
-        // Handle AI string answers in MCQ
-        const optEn = currentQ.options?.en[val] || '';
-        const optHi = currentQ.options?.hi[val] || '';
+        // AI Lab specific: compare selected option text with answer string
+        const optEn = (currentQ.options?.en[val] || '').toLowerCase().trim();
+        const optHi = (currentQ.options?.hi[val] || '').toLowerCase().trim();
         const ans = currentQ.answer.toString().toLowerCase().trim();
-        isCorrect = optEn.toLowerCase().trim() === ans || optHi.toLowerCase().trim() === ans;
+        isCorrect = optEn === ans || optHi === ans;
       }
     } else {
       // Logic for FILL_BLANKS
@@ -201,8 +208,8 @@ export default function App() {
       setFeedback({ type: 'correct', show: true });
       setGameState(p => ({
         ...p,
-        coins: p.coins + 25,
-        brainScore: p.brainScore + (currentQ.isAI ? 40 : 10),
+        coins: p.coins + 30, // Reward slightly more to keep the AI lab loop sustainable
+        brainScore: p.brainScore + (currentQ.isAI ? 50 : 10),
         completedLevels: Array.from(new Set([...p.completedLevels, currentQ.id]))
       }));
     } else {
@@ -222,8 +229,8 @@ export default function App() {
     setInputText('');
     setShowHint(false);
     if (view === 'AI_LAB') {
-      setView('HOME');
-      setAiQuestion(null);
+      // Instead of going home, we generate another one for "unlimited" feel
+      generateAIChallenge();
     } else {
       setGameState(p => ({ ...p, currentLevel: p.currentLevel + 1 }));
     }
@@ -421,7 +428,7 @@ export default function App() {
 
               <button 
                 onClick={() => { changeView('AI_LAB'); generateAIChallenge(); }} 
-                className="w-full py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black text-sm flex items-center justify-center gap-3 active:scale-95"
+                className="w-full py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black text-sm flex items-center justify-center gap-3 active:scale-95 shadow-indigo-100"
               >
                 <Zap className="w-5 h-5 fill-amber-400 text-amber-400" /> AI Challenge Lab
               </button>
@@ -474,20 +481,21 @@ export default function App() {
       <Header title={view === 'AI_LAB' ? "AI Lab" : `${t.level} ${gameState.currentLevel}`} />
       
       {isGenerating ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-          <div className="relative w-20 h-20 mb-6">
-            <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
-            <div className="absolute inset-0 border-4 border-transparent border-t-indigo-600 rounded-full animate-spin"></div>
-            <Brain className="absolute inset-0 m-auto w-8 h-8 text-slate-200" />
+        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center animate-pulse">
+          <div className="relative w-24 h-24 mb-6">
+            <div className="absolute inset-0 border-[6px] border-slate-100 rounded-full"></div>
+            <div className="absolute inset-0 border-[6px] border-transparent border-t-indigo-600 rounded-full animate-spin"></div>
+            <Brain className="absolute inset-0 m-auto w-10 h-10 text-indigo-400" />
           </div>
           <h3 className="text-xl font-black text-slate-800 tracking-tight italic">AI Thinking...</h3>
+          <p className="text-[10px] text-slate-400 font-bold mt-2 uppercase tracking-[0.2em]">Creating unlimited challenges</p>
         </div>
       ) : (
         <div className="p-4 flex-1 flex flex-col max-w-md mx-auto w-full overflow-y-auto pb-32">
           <div className="bg-white p-6 rounded-[2rem] shadow-lg border border-slate-100 mb-4 flex flex-col items-center text-center relative overflow-hidden">
               {currentQ.isAI ? (
                 <div className="absolute top-3 right-3 bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full text-[7px] font-black border border-indigo-100 uppercase flex items-center gap-1">
-                  <Zap className="w-2.5 h-2.5 fill-current" /> AI
+                  <Zap className="w-2.5 h-2.5 fill-current" /> AI Unlimited
                 </div>
               ) : currentQ.type === 'IMAGE_MCQ' && (
                 <div className="absolute top-3 left-3 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full text-[7px] font-black border border-blue-100 uppercase flex items-center gap-1">
@@ -516,24 +524,38 @@ export default function App() {
                   />
                   <button 
                     onClick={() => handleAnswer(inputText)} 
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg active:scale-90"
                   >
                     <Send className="w-4 h-4" />
                   </button>
                 </div>
               ) : (
-                (currentQ.options?.[gameState.language] || currentQ.options?.en || []).map((opt, idx) => (
-                  <button 
-                    key={idx} 
-                    onClick={() => handleAnswer(idx)} 
-                    className={`w-full p-4 rounded-2xl font-black text-sm text-left shadow-sm border-2 transition-all active:scale-98 flex items-center justify-between group ${selectedIdx === idx ? (idx === currentQ.answer || (currentQ.options?.en[idx] || '').toLowerCase() === currentQ.answer.toString().toLowerCase() || (currentQ.options?.hi[idx] || '').toLowerCase() === currentQ.answer.toString().toLowerCase() ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-rose-500 border-rose-600 text-white animate-shake') : 'bg-white border-slate-100 text-slate-700'}`}
-                  >
-                    <span className="flex-1 pr-4">{opt}</span>
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] border ${selectedIdx === idx ? 'bg-white/20 border-white/40' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
-                      {String.fromCharCode(65 + idx)}
-                    </div>
-                  </button>
-                ))
+                (currentQ.options?.[gameState.language] || currentQ.options?.en || []).map((opt, idx) => {
+                  let isCorrectStyle = false;
+                  if (selectedIdx === idx) {
+                    if (typeof currentQ.answer === 'number') {
+                      isCorrectStyle = idx === currentQ.answer;
+                    } else {
+                      const optEn = (currentQ.options?.en[idx] || '').toLowerCase().trim();
+                      const optHi = (currentQ.options?.hi[idx] || '').toLowerCase().trim();
+                      const ans = currentQ.answer.toString().toLowerCase().trim();
+                      isCorrectStyle = optEn === ans || optHi === ans;
+                    }
+                  }
+
+                  return (
+                    <button 
+                      key={idx} 
+                      onClick={() => handleAnswer(idx)} 
+                      className={`w-full p-4 rounded-2xl font-black text-sm text-left shadow-sm border-2 transition-all active:scale-98 flex items-center justify-between group ${selectedIdx === idx ? (isCorrectStyle ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-rose-500 border-rose-600 text-white animate-shake') : 'bg-white border-slate-100 text-slate-700'}`}
+                    >
+                      <span className="flex-1 pr-4">{opt}</span>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] border ${selectedIdx === idx ? 'bg-white/20 border-white/40' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
+                        {String.fromCharCode(65 + idx)}
+                      </div>
+                    </button>
+                  );
+                })
               )}
           </div>
 
@@ -559,13 +581,14 @@ export default function App() {
               {feedback.show && feedback.type === 'correct' ? (
                 <button 
                   onClick={handleNext} 
-                  className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2"
+                  className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95"
                 >
                   <Sparkles className="w-4 h-4" /> {t.next}
                 </button>
               ) : (
-                <div className="flex-1 flex items-center justify-center bg-white border border-slate-100 rounded-2xl text-[9px] text-slate-300 font-black italic">
-                  Level Goal: Think Outside the Box
+                <div className="flex-1 flex flex-col items-center justify-center bg-white border border-slate-100 rounded-2xl text-[9px] text-slate-300 font-black italic">
+                  <span>Level Goal</span>
+                  <span className="text-[7px] uppercase tracking-tighter opacity-50">Think Outside the Box</span>
                 </div>
               )}
           </div>
