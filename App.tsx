@@ -22,14 +22,17 @@ import {
   X,
   Gift,
   Image as ImageIcon,
-  Flame
+  Flame,
+  Key
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { GameState, View, Question } from './types';
 import { QUESTIONS } from './constants/questions';
 import { UI_STRINGS } from './constants/translations';
 
-const STORAGE_KEY = 'brain_test_lite_v6';
+const STORAGE_KEY = 'brain_test_lite_v7';
+
+// Removed redundant window.aistudio declaration as it conflicts with the environment's pre-defined AIStudio type.
 
 const SOUNDS = {
   click: 'https://cdn.pixabay.com/audio/2022/03/15/audio_783ef5a7ee.mp3',
@@ -61,6 +64,7 @@ export default function App() {
   const [showHint, setShowHint] = useState(false);
   const [aiStreak, setAiStreak] = useState(0);
   const [feedback, setFeedback] = useState<{ type: 'correct' | 'wrong' | null, show: boolean }>({ type: null, show: false });
+  const [needsApiKey, setNeedsApiKey] = useState(false);
 
   const t = UI_STRINGS[gameState.language];
 
@@ -71,6 +75,29 @@ export default function App() {
       audio.play().catch(e => console.debug("Audio play blocked", e));
     }
   }, [gameState.soundEnabled]);
+
+  // Check if API key selection is needed
+  useEffect(() => {
+    const checkKey = async () => {
+      // @ts-ignore - window.aistudio is provided by the environment
+      if (window.aistudio) {
+        // @ts-ignore
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setNeedsApiKey(!hasKey);
+      }
+    };
+    checkKey();
+  }, [view]);
+
+  const handleOpenKeySelection = async () => {
+    // @ts-ignore
+    if (window.aistudio) {
+      // @ts-ignore
+      await window.aistudio.openSelectKey();
+      setNeedsApiKey(false);
+      // Proceed to generation or labs after key selection
+    }
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -121,6 +148,17 @@ export default function App() {
       return;
     }
 
+    // Check key before generating
+    // @ts-ignore
+    if (window.aistudio) {
+      // @ts-ignore
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        setNeedsApiKey(true);
+        return;
+      }
+    }
+
     setIsGenerating(true);
     setAiQuestion(null);
     setFeedback({ type: null, show: false });
@@ -130,12 +168,13 @@ export default function App() {
     playSound('magic');
     
     try {
+      // Must create a new instance right before making an API call to ensure latest key is used
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: "Create a unique and clever brain-teaser MCQ puzzle. Provide translations in English and Hindi.",
+        contents: "Generate a clever brain-teaser puzzle in MCQ format. Be creative and funny. Include translations for English and Hindi.",
         config: {
-          systemInstruction: "You are a creative puzzle master. Generate a Multiple Choice Question (MCQ) brain teaser. Return ONLY a valid JSON object. No markdown formatting. The 'answer' field must be an integer (0-3) representing the index of the correct option.",
+          systemInstruction: "You are a witty puzzle master. Output ONLY a valid JSON object. No Markdown. No backticks. Ensure the 'answer' property is an integer from 0 to 3.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -167,15 +206,22 @@ export default function App() {
       });
 
       let text = response.text || "";
-      // Strip any markdown backticks if the model ignored instructions
+      // Strip any markdown backticks if model ignored instructions
       text = text.replace(/```json/g, '').replace(/```/g, '').trim();
       
       const data = JSON.parse(text);
       setAiQuestion({ ...data, id: `ai_${Date.now()}`, isAI: true });
       setGameState(p => ({ ...p, coins: p.coins - 10 }));
-    } catch (err) {
+    } catch (err: any) {
       console.error("AI Generation Error Details:", err);
-      alert("AI Lab connection error. Check your API configuration.");
+      
+      if (err.message && err.message.includes("Requested entity was not found")) {
+        alert("API Key error. Please re-select your key.");
+        // @ts-ignore
+        if (window.aistudio) await window.aistudio.openSelectKey();
+      } else {
+        alert(`AI Connection Failed. Ensure your API Key is active.\nError: ${err.message || 'Unknown'}`);
+      }
       setView('HOME');
     } finally {
       setIsGenerating(false);
@@ -284,6 +330,18 @@ export default function App() {
         <Header title={t.settings} />
         <div className="p-6 space-y-4">
           <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 space-y-6">
+            {/* @ts-ignore */}
+            {window.aistudio && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-purple-50 rounded-xl text-purple-600"><Key className="w-5 h-5" /></div>
+                  <div><h3 className="font-black text-slate-800 text-sm">API Key</h3></div>
+                </div>
+                <button onClick={handleOpenKeySelection} className="px-4 py-2 bg-purple-600 text-white rounded-xl font-black text-xs">
+                  Update
+                </button>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-blue-50 rounded-xl text-blue-600"><Globe className="w-5 h-5" /></div>
@@ -306,10 +364,6 @@ export default function App() {
               {t.reset}
             </button>
           </div>
-          <button onClick={() => changeView('ABOUT')} className="w-full py-4 bg-white rounded-xl border border-slate-100 shadow-sm flex items-center justify-center gap-3 active:scale-95">
-             <Info className="w-5 h-5 text-slate-400" />
-             <span className="text-xs font-black text-slate-600 uppercase">{t.about}</span>
-          </button>
         </div>
       </div>
     );
@@ -331,6 +385,15 @@ export default function App() {
           </button>
         </div>
         <div className="flex-1 flex flex-col justify-center items-center px-6 pb-6">
+           {needsApiKey && (
+             <div className="w-full mb-4 bg-purple-50 border border-purple-200 rounded-[1.5rem] p-4 flex flex-col items-center animate-in zoom-in">
+                <p className="text-[10px] font-black text-purple-600 uppercase mb-2 text-center">AI Activation Required</p>
+                <button onClick={handleOpenKeySelection} className="w-full py-3 bg-purple-600 text-white rounded-xl font-black text-xs shadow-md active:scale-95 flex items-center justify-center gap-2">
+                  <Key className="w-4 h-4" /> Setup AI Key
+                </button>
+                <p className="text-[8px] text-purple-400 mt-2 text-center">Required for Unlimited mode</p>
+             </div>
+           )}
            {canClaimBonus && (
              <div className="w-full mb-4 bg-amber-50 border border-amber-200 rounded-[1.5rem] p-4 flex items-center justify-between animate-in zoom-in">
                 <div className="flex items-center gap-3">
