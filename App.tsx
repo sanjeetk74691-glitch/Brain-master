@@ -130,10 +130,15 @@ export default function App() {
     playSound('magic');
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = process.env.API_KEY;
+      if (!apiKey) {
+        throw new Error("API_KEY is missing");
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: "Create a unique, clever brain-teaser for a puzzle game. Provide BOTH English and Hindi translations. Response MUST be strictly valid JSON. Type MUST be 'MCQ'. Provide 4 options. The 'answer' field MUST be an INTEGER representing the correct 0-based index (0-3).",
+        contents: "Generate a unique brain-teaser. Return ONLY a JSON object. No Markdown. No backticks. Properties: type (string 'MCQ'), prompt (object with en/hi strings), options (object with en/hi string arrays), answer (integer index 0-3), hint (object with en/hi strings).",
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -156,12 +161,16 @@ export default function App() {
         }
       });
 
-      const data = JSON.parse(response.text);
+      let jsonStr = response.text || "";
+      // Strip markdown if AI included it anyway
+      jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+      
+      const data = JSON.parse(jsonStr);
       setAiQuestion({ ...data, id: `ai_${Date.now()}`, isAI: true });
       setGameState(p => ({ ...p, coins: p.coins - 10 }));
     } catch (err) {
       console.error("AI Generation Error:", err);
-      alert("AI Lab error. Switching to Home.");
+      alert("AI Lab error. Check your connection or API configuration.");
       setView('HOME');
     } finally {
       setIsGenerating(false);
@@ -175,7 +184,6 @@ export default function App() {
 
     if (typeof val === 'number') {
       setSelectedIdx(val);
-      // Ensure we compare index correctly
       isCorrect = val === Number(currentQ.answer);
     } else {
       isCorrect = val.toString().toLowerCase().trim() === currentQ.answer.toString().toLowerCase().trim();
@@ -209,7 +217,7 @@ export default function App() {
     setInputText('');
     setShowHint(false);
     if (view === 'AI_LAB') {
-      generateAIChallenge(); // Unlimited generation loop
+      generateAIChallenge();
     } else {
       setGameState(p => ({ ...p, currentLevel: p.currentLevel + 1 }));
     }
@@ -251,18 +259,13 @@ export default function App() {
       <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-10 text-center relative overflow-hidden">
         <div className="absolute top-[-10%] left-[-10%] w-64 h-64 bg-blue-600/20 rounded-full blur-[100px]"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-80 h-80 bg-indigo-600/20 rounded-full blur-[100px]"></div>
-        
         <div className="relative z-10">
           <div className="w-24 h-24 bg-white/10 backdrop-blur-2xl rounded-[2.5rem] mx-auto flex items-center justify-center shadow-2xl mb-10 animate-bounce-slow border border-white/20">
             <Brain className="w-12 h-12 text-blue-400" />
           </div>
           <h1 className="text-4xl font-black mb-2 tracking-tighter italic">{t.appName}</h1>
           <p className="text-blue-400 text-[10px] font-black uppercase tracking-[0.5em] mb-16 opacity-80">{t.unlimited}</p>
-          
-          <button 
-            onClick={() => changeView('HOME')} 
-            className="w-full max-w-xs py-5 bg-blue-600 text-white rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all"
-          >
+          <button onClick={() => changeView('HOME')} className="w-full max-w-xs py-5 bg-blue-600 text-white rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">
             {t.play}
           </button>
         </div>
@@ -285,7 +288,6 @@ export default function App() {
                 {gameState.language === 'en' ? 'English' : 'हिंदी'}
               </button>
             </div>
-
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-orange-50 rounded-xl text-orange-600">{gameState.soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}</div>
@@ -295,7 +297,6 @@ export default function App() {
                 {gameState.soundEnabled ? 'ON' : 'OFF'}
               </button>
             </div>
-
             <button onClick={() => { if(confirm("Are you sure?")) { playSound('click'); setGameState(INITIAL_STATE); setView('SPLASH'); }}} className="w-full py-4 bg-rose-50 text-rose-600 rounded-xl font-black text-xs border border-rose-100">
               {t.reset}
             </button>
@@ -346,7 +347,6 @@ export default function App() {
             <Settings className="w-5 h-5 text-slate-400" />
           </button>
         </div>
-
         <div className="flex-1 flex flex-col justify-center items-center px-6 pb-6">
            {canClaimBonus && (
              <div className="w-full mb-4 bg-amber-50 border border-amber-200 rounded-[1.5rem] p-4 flex items-center justify-between animate-in zoom-in">
@@ -360,7 +360,6 @@ export default function App() {
                 <button onClick={handleClaimBonus} className="px-4 py-2 bg-amber-500 text-white rounded-xl font-black text-[10px] shadow-sm active:scale-90">Claim</button>
              </div>
            )}
-
            <div className="w-full bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200 mb-6 text-center relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-indigo-600"></div>
               <p className="text-[10px] font-black text-slate-400 uppercase mb-1">{t.brainScore}</p>
@@ -369,7 +368,6 @@ export default function App() {
                 <Sparkles className="w-3 h-3" /> {t.level} {gameState.currentLevel}
               </div>
            </div>
-
            <div className="w-full max-w-xs space-y-3">
               <button onClick={() => changeView('PLAY')} className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black text-lg shadow-lg flex items-center justify-center gap-3 active:scale-95">
                 <Play className="w-5 h-5 fill-blue-400 text-blue-400" /> {t.play}
@@ -436,7 +434,6 @@ export default function App() {
               </div>
             </div>
           )}
-
           <div className="bg-white p-6 rounded-[2rem] shadow-lg border border-slate-100 mb-4 flex flex-col items-center text-center relative overflow-hidden">
               {currentQ.isAI ? (
                 <div className="absolute top-3 right-3 bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full text-[7px] font-black border border-indigo-100 uppercase flex items-center gap-1"><Zap className="w-2.5 h-2.5 fill-current" /> AI Unlimited</div>
@@ -448,7 +445,6 @@ export default function App() {
               )}
               <h3 className="text-lg font-black text-slate-800 leading-snug px-2">{currentQ.prompt[gameState.language] || currentQ.prompt.en}</h3>
           </div>
-
           <div className="space-y-3">
               {currentQ.type === 'FILL_BLANKS' ? (
                 <div className="relative">
@@ -467,7 +463,6 @@ export default function App() {
                 })
               )}
           </div>
-
           <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-50/90 backdrop-blur-md flex gap-3 max-w-md mx-auto">
               <button onClick={() => { playSound('click'); if(!showHint && gameState.coins >= 5) { setShowHint(true); setGameState(p => ({ ...p, coins: p.coins - 5 })); } else if(!showHint) { alert(t.notEnoughCoins); } else { setShowHint(false); } }} className={`w-14 h-14 flex flex-col items-center justify-center rounded-2xl font-black shadow-lg transition-all ${showHint ? 'bg-yellow-400 text-yellow-900 border-2 border-yellow-500' : 'bg-white text-slate-300 border border-slate-100'}`}>
                 <Lightbulb className={`w-5 h-5 ${showHint ? 'fill-current' : ''}`} />
@@ -482,7 +477,6 @@ export default function App() {
                 </div>
               )}
           </div>
-
           {showHint && (
             <div className="mt-4 p-4 bg-blue-50/50 border-2 border-blue-100 border-dashed rounded-2xl text-blue-900 text-xs font-bold animate-in zoom-in">
               <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block mb-1">Hint</span>
