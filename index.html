@@ -9,6 +9,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+        }
         body {
             font-family: 'Inter', sans-serif;
             background-color: #2563eb;
@@ -16,17 +19,17 @@
             -webkit-tap-highlight-color: transparent;
             margin: 0;
             padding: 0;
-            overflow: hidden;
-            height: 100vh;
+            overflow-x: hidden;
+            height: 100%;
         }
         #root {
-            height: 100vh;
+            min-height: 100vh;
             width: 100vw;
-            background-color: #2563eb;
+            background-color: #f3f4f6; /* Lighter background for the app area */
         }
         @keyframes bounce {
           0%, 100% { transform: translateY(0) scale(1); }
-          50% { transform: translateY(-20px) scale(1.1); }
+          50% { transform: translateY(-15px) scale(1.05); }
         }
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
@@ -34,6 +37,11 @@
           75% { transform: translateX(5px); }
         }
         .animate-shake { animation: shake 0.3s ease-in-out; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
     </style>
 <script type="importmap">
 {
