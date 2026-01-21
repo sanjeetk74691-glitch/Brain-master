@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Settings, 
   Play, 
@@ -11,40 +12,17 @@ import {
   LayoutGrid,
   Send,
   Zap,
-  RotateCcw,
-  Trophy,
-  Info,
-  ShieldCheck,
-  FileText,
-  CheckCircle2,
-  Volume2,
-  VolumeX,
-  X,
-  Gift,
-  Image as ImageIcon,
-  Flame,
-  Key
+  Loader2
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { GameState, View, Question } from './types';
 import { QUESTIONS } from './constants/questions';
-import { UI_STRINGS } from './constants/translations';
 
-const STORAGE_KEY = 'brain_test_lite_v7';
-
-// Removed redundant window.aistudio declaration as it conflicts with the environment's pre-defined AIStudio type.
-
-const SOUNDS = {
-  click: 'https://cdn.pixabay.com/audio/2022/03/15/audio_783ef5a7ee.mp3',
-  correct: 'https://cdn.pixabay.com/audio/2021/08/04/audio_bbd1349f44.mp3',
-  wrong: 'https://cdn.pixabay.com/audio/2022/03/10/audio_c35278d32b.mp3',
-  bonus: 'https://cdn.pixabay.com/audio/2021/08/04/audio_c1913f99a5.mp3',
-  magic: 'https://cdn.pixabay.com/audio/2022/03/15/audio_1457814b7e.mp3'
-};
+const STORAGE_KEY = 'brain_test_lite_v2';
 
 const INITIAL_STATE: GameState = {
   user: { name: "Explorer", email: "", photo: null },
-  coins: 500,
+  coins: 550,
   currentLevel: 1,
   completedLevels: [],
   language: 'en',
@@ -57,59 +35,27 @@ export default function App() {
   const [gameState, setGameState] = useState<GameState>(INITIAL_STATE);
   const [view, setView] = useState<View>('SPLASH');
   const [isReady, setIsReady] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [aiQuestion, setAiQuestion] = useState<Question | null>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [inputText, setInputText] = useState('');
   const [showHint, setShowHint] = useState(false);
-  const [aiStreak, setAiStreak] = useState(0);
-  const [feedback, setFeedback] = useState<{ type: 'correct' | 'wrong' | null, show: boolean }>({ type: null, show: false });
-  const [needsApiKey, setNeedsApiKey] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'correct' | 'wrong'; show: boolean }>({ type: 'correct', show: false });
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiQuestion, setAiQuestion] = useState<Question | null>(null);
 
-  const t = UI_STRINGS[gameState.language];
-
-  const playSound = useCallback((type: keyof typeof SOUNDS) => {
-    if (gameState.soundEnabled) {
-      const audio = new Audio(SOUNDS[type]);
-      audio.volume = 0.5;
-      audio.play().catch(e => console.debug("Audio play blocked", e));
-    }
-  }, [gameState.soundEnabled]);
-
-  // Check if API key selection is needed
   useEffect(() => {
-    const checkKey = async () => {
-      // @ts-ignore - window.aistudio is provided by the environment
-      if (window.aistudio) {
-        // @ts-ignore
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setNeedsApiKey(!hasKey);
+    const init = async () => {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try { 
+          const parsed = JSON.parse(saved);
+          setGameState(prev => ({ ...prev, ...parsed })); 
+        } catch (e) {
+          console.error("Failed to load save", e);
+        }
       }
+      setIsReady(true);
     };
-    checkKey();
-  }, [view]);
-
-  const handleOpenKeySelection = async () => {
-    // @ts-ignore
-    if (window.aistudio) {
-      // @ts-ignore
-      await window.aistudio.openSelectKey();
-      setNeedsApiKey(false);
-      // Proceed to generation or labs after key selection
-    }
-  };
-
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setGameState(prev => ({ ...prev, ...parsed }));
-      } catch (e) {
-        console.error("Failed to load game state", e);
-      }
-    }
-    setIsReady(true);
+    init();
   }, []);
 
   useEffect(() => {
@@ -118,421 +64,300 @@ export default function App() {
     }
   }, [gameState, isReady]);
 
-  const canClaimBonus = useMemo(() => {
-    if (!gameState.lastDailyBonus) return true;
-    const last = new Date(gameState.lastDailyBonus);
-    const now = new Date();
-    return now.toDateString() !== last.toDateString();
-  }, [gameState.lastDailyBonus]);
-
-  const handleClaimBonus = () => {
-    if (!canClaimBonus) return;
-    playSound('bonus');
-    setGameState(p => ({
-      ...p,
-      coins: p.coins + 50,
-      lastDailyBonus: Date.now()
-    }));
-  };
-
   const currentQ = useMemo(() => {
     if (view === 'AI_LAB' && aiQuestion) return aiQuestion;
     const idx = (gameState.currentLevel - 1) % (QUESTIONS.length || 1);
     return QUESTIONS[idx] || QUESTIONS[0];
   }, [gameState.currentLevel, view, aiQuestion]);
 
-  const generateAIChallenge = async () => {
-    if (gameState.coins < 10) {
-      alert(t.notEnoughCoins);
-      setView('HOME');
+  const generateAIQuestion = async () => {
+    if (!process.env.API_KEY) {
+      alert("AI Connection Failed. API Key is missing in environment.");
       return;
     }
 
-    // Check key before generating
-    // @ts-ignore
-    if (window.aistudio) {
-      // @ts-ignore
-      const hasKey = await window.aistudio.hasSelectedApiKey();
-      if (!hasKey) {
-        setNeedsApiKey(true);
-        return;
-      }
-    }
-
-    setIsGenerating(true);
+    setIsAiLoading(true);
     setAiQuestion(null);
-    setFeedback({ type: null, show: false });
     setSelectedIdx(null);
     setInputText('');
-    setShowHint(false);
-    playSound('magic');
-    
+    setFeedback({ ...feedback, show: false });
+
     try {
-      // Must create a new instance right before making an API call to ensure latest key is used
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: "Generate a clever brain-teaser puzzle in MCQ format. Be creative and funny. Include translations for English and Hindi.",
+        model: 'gemini-2.5-flash-lite-latest',
+        contents: "Create a tricky lateral thinking brain teaser. Return it as a JSON object with properties: type (MCQ or FILL_BLANKS), prompt (object with en and hi keys), options (object with en and hi keys, if MCQ), answer (index if MCQ, string if FILL_BLANKS), hint (object with en and hi keys). Keep it funny and surprising.",
         config: {
-          systemInstruction: "You are a witty puzzle master. Output ONLY a valid JSON object. No Markdown. No backticks. Ensure the 'answer' property is an integer from 0 to 3.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               type: { type: Type.STRING },
-              prompt: { 
-                type: Type.OBJECT, 
-                properties: { en: { type: Type.STRING }, hi: { type: Type.STRING } },
-                required: ["en", "hi"]
+              prompt: {
+                type: Type.OBJECT,
+                properties: {
+                  en: { type: Type.STRING },
+                  hi: { type: Type.STRING }
+                }
               },
-              options: { 
-                type: Type.OBJECT, 
-                properties: { 
+              options: {
+                type: Type.OBJECT,
+                properties: {
                   en: { type: Type.ARRAY, items: { type: Type.STRING } },
                   hi: { type: Type.ARRAY, items: { type: Type.STRING } }
-                },
-                required: ["en", "hi"]
+                }
               },
-              answer: { type: Type.INTEGER },
-              hint: { 
-                type: Type.OBJECT, 
-                properties: { en: { type: Type.STRING }, hi: { type: Type.STRING } },
-                required: ["en", "hi"]
+              answer: { type: Type.NUMBER },
+              hint: {
+                type: Type.OBJECT,
+                properties: {
+                  en: { type: Type.STRING },
+                  hi: { type: Type.STRING }
+                }
               }
-            },
-            required: ["type", "prompt", "options", "answer", "hint"]
+            }
           }
         }
       });
 
-      let text = response.text || "";
-      // Strip any markdown backticks if model ignored instructions
-      text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-      
-      const data = JSON.parse(text);
-      setAiQuestion({ ...data, id: `ai_${Date.now()}`, isAI: true });
-      setGameState(p => ({ ...p, coins: p.coins - 10 }));
-    } catch (err: any) {
-      console.error("AI Generation Error Details:", err);
-      
-      if (err.message && err.message.includes("Requested entity was not found")) {
-        alert("API Key error. Please re-select your key.");
-        // @ts-ignore
-        if (window.aistudio) await window.aistudio.openSelectKey();
-      } else {
-        alert(`AI Connection Failed. Ensure your API Key is active.\nError: ${err.message || 'Unknown'}`);
-      }
-      setView('HOME');
+      const data = JSON.parse(response.text);
+      setAiQuestion({
+        ...data,
+        id: `ai_${Date.now()}`,
+        isAI: true
+      });
+      setView('AI_LAB');
+    } catch (error) {
+      console.error("AI Generation Error:", error);
+      alert("The AI is overthinking! Try again in a moment.");
     } finally {
-      setIsGenerating(false);
+      setIsAiLoading(false);
     }
   };
 
-  const handleAnswer = (val: number | string) => {
-    if (feedback.show) return;
-
-    let isCorrect = false;
-
-    if (typeof val === 'number') {
-      setSelectedIdx(val);
-      isCorrect = val === Number(currentQ.answer);
-    } else {
-      isCorrect = val.toString().toLowerCase().trim() === currentQ.answer.toString().toLowerCase().trim();
-    }
+  const handleAnswer = (idx: number | string) => {
+    if (selectedIdx !== null || feedback.show) return;
+    
+    const isCorrect = idx === currentQ.answer || 
+      (currentQ.type === 'FILL_BLANKS' && idx.toString().toLowerCase().trim() === currentQ.answer.toString().toLowerCase().trim());
+    
+    if (typeof idx === 'number') setSelectedIdx(idx);
 
     if (isCorrect) {
-      playSound('correct');
       setFeedback({ type: 'correct', show: true });
-      if (view === 'AI_LAB') setAiStreak(s => s + 1);
       setGameState(p => ({
         ...p,
-        coins: p.coins + (currentQ.isAI ? 40 : 25),
-        brainScore: p.brainScore + (currentQ.isAI ? 50 : 10),
+        coins: p.coins + 20,
+        brainScore: p.brainScore + 25,
         completedLevels: Array.from(new Set([...p.completedLevels, currentQ.id]))
       }));
     } else {
-      playSound('wrong');
       setFeedback({ type: 'wrong', show: true });
-      if (view === 'AI_LAB') setAiStreak(0);
       setTimeout(() => {
-        setFeedback({ type: null, show: false });
+        setFeedback(f => ({ ...f, show: false }));
         setSelectedIdx(null);
       }, 1000);
     }
   };
 
   const handleNext = () => {
-    playSound('click');
-    setFeedback({ type: null, show: false });
+    setFeedback({ ...feedback, show: false });
     setSelectedIdx(null);
     setInputText('');
     setShowHint(false);
+    
     if (view === 'AI_LAB') {
-      generateAIChallenge();
+      generateAIQuestion();
     } else {
       setGameState(p => ({ ...p, currentLevel: p.currentLevel + 1 }));
     }
   };
 
-  const changeView = (v: View) => {
-    playSound('click');
-    if (v === 'AI_LAB') setAiStreak(0);
-    setView(v);
-  };
-
   if (!isReady) return null;
 
-  const Header = ({ title, showBack = true }: { title: string, showBack?: boolean }) => (
-    <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-xl border-b border-slate-100 sticky top-0 z-50">
-      <div className="flex items-center gap-2">
-        {showBack && (
-          <button onClick={() => changeView('HOME')} className="p-2 bg-white border border-slate-100 rounded-xl active:scale-90">
-            <ChevronLeft className="w-5 h-5 text-slate-600" />
-          </button>
-        )}
-        <div>
-          <h2 className="font-black text-slate-800 tracking-tight text-sm">{title}</h2>
-          <div className="flex items-center gap-1 mt-0.5">
-            <Trophy className="w-2.5 h-2.5 text-amber-500" />
-            <span className="text-[8px] font-bold text-slate-400 uppercase">{t.brainScore}: {gameState.brainScore}</span>
-          </div>
+  if (view === 'SPLASH') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-blue-600 text-white p-10 text-center">
+        <div className="w-24 h-24 bg-white rounded-[2.5rem] flex items-center justify-center shadow-2xl mb-12 animate-bounce">
+          <Brain className="w-12 h-12 text-blue-600" />
+        </div>
+        <h1 className="text-5xl font-black mb-2 tracking-tighter italic">Brain Test</h1>
+        <p className="text-blue-200 text-[10px] font-black uppercase tracking-[0.5em] mb-16 opacity-80">AI ENHANCED v2.0</p>
+        <button onClick={() => setView('HOME')} className="w-full max-w-xs py-6 bg-white text-blue-600 rounded-[2rem] font-black text-xl shadow-2xl active:scale-95 flex items-center justify-center gap-3">
+          <Play className="w-6 h-6 fill-current" /> Start Game
+        </button>
+      </div>
+    );
+  }
+
+  const HUD = ({ title }: { title: string }) => (
+    <div className="flex items-center justify-between p-6 bg-white border-b border-gray-100 sticky top-0 z-50">
+      <button onClick={() => setView('HOME')} className="p-3 bg-gray-50 rounded-2xl active:scale-90 border border-gray-100"><ChevronLeft className="w-5 h-5 text-gray-500" /></button>
+      <div className="text-center">
+        <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{title}</p>
+        <div className="flex items-center gap-2 justify-center">
+          <Brain className="w-4 h-4 text-gray-800" />
+          <span className="font-black text-gray-900 text-sm">IQ {gameState.brainScore}</span>
         </div>
       </div>
-      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-400/10 rounded-xl border border-yellow-400/20">
-        <Coins className="w-3.5 h-3.5 text-yellow-500 fill-current" />
-        <span className="text-xs font-black text-yellow-700 tabular-nums">{gameState.coins}</span>
+      <div className="flex items-center gap-2 px-4 py-2 bg-yellow-50 rounded-2xl border border-yellow-100">
+        <Coins className="w-4 h-4 text-yellow-500 fill-current" />
+        <span className="text-xs font-black text-yellow-800">{gameState.coins}</span>
       </div>
     </div>
   );
 
-  if (view === 'SPLASH') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-10 text-center relative overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-64 h-64 bg-blue-600/20 rounded-full blur-[100px]"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-80 h-80 bg-indigo-600/20 rounded-full blur-[100px]"></div>
-        <div className="relative z-10">
-          <div className="w-24 h-24 bg-white/10 backdrop-blur-2xl rounded-[2.5rem] mx-auto flex items-center justify-center shadow-2xl mb-10 animate-bounce-slow border border-white/20">
-            <Brain className="w-12 h-12 text-blue-400" />
-          </div>
-          <h1 className="text-4xl font-black mb-2 tracking-tighter italic">{t.appName}</h1>
-          <p className="text-blue-400 text-[10px] font-black uppercase tracking-[0.5em] mb-16 opacity-80">{t.unlimited}</p>
-          <button onClick={() => changeView('HOME')} className="w-full max-w-xs py-5 bg-blue-600 text-white rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">
-            {t.play}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (view === 'SETTINGS') {
-    return (
-      <div className="flex flex-col min-h-screen bg-slate-50">
-        <Header title={t.settings} />
-        <div className="p-6 space-y-4">
-          <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 space-y-6">
-            {/* @ts-ignore */}
-            {window.aistudio && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-purple-50 rounded-xl text-purple-600"><Key className="w-5 h-5" /></div>
-                  <div><h3 className="font-black text-slate-800 text-sm">API Key</h3></div>
-                </div>
-                <button onClick={handleOpenKeySelection} className="px-4 py-2 bg-purple-600 text-white rounded-xl font-black text-xs">
-                  Update
-                </button>
-              </div>
-            )}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-50 rounded-xl text-blue-600"><Globe className="w-5 h-5" /></div>
-                <div><h3 className="font-black text-slate-800 text-sm">{t.language}</h3></div>
-              </div>
-              <button onClick={() => { playSound('click'); setGameState(p => ({ ...p, language: p.language === 'en' ? 'hi' : 'en' })); }} className="px-4 py-2 bg-slate-900 text-white rounded-xl font-black text-xs">
-                {gameState.language === 'en' ? 'English' : 'हिंदी'}
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-orange-50 rounded-xl text-orange-600">{gameState.soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}</div>
-                <div><h3 className="font-black text-slate-800 text-sm">{t.sound}</h3></div>
-              </div>
-              <button onClick={() => { playSound('click'); setGameState(p => ({ ...p, soundEnabled: !p.soundEnabled })); }} className={`px-4 py-2 rounded-xl font-black text-xs ${gameState.soundEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                {gameState.soundEnabled ? 'ON' : 'OFF'}
-              </button>
-            </div>
-            <button onClick={() => { if(confirm("Are you sure?")) { playSound('click'); setGameState(INITIAL_STATE); setView('SPLASH'); }}} className="w-full py-4 bg-rose-50 text-rose-600 rounded-xl font-black text-xs border border-rose-100">
-              {t.reset}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (view === 'HOME') {
     return (
-      <div className="flex flex-col min-h-screen bg-slate-50 animate-in fade-in duration-500">
-        <div className="p-6 flex justify-between items-center bg-white/50 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-lg">BT</div>
+      <div className="flex flex-col min-h-screen bg-[#FDFDFF] animate-in slide-in-from-bottom duration-500">
+        <div className="p-6 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-black shadow-lg">BT</div>
             <div>
-              <p className="text-[8px] font-black text-slate-400 uppercase">{t.welcome}</p>
-              <p className="font-black text-slate-800 text-sm">Explorer</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase">Welcome</p>
+              <p className="font-black text-gray-800 text-lg leading-none">{gameState.user?.name}</p>
             </div>
           </div>
-          <button onClick={() => changeView('SETTINGS')} className="p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-            <Settings className="w-5 h-5 text-slate-400" />
+          <button 
+            onClick={() => setView('SETTINGS')} 
+            className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm active:scale-90"
+          >
+            <Settings className="w-6 h-6 text-gray-400" />
           </button>
         </div>
-        <div className="flex-1 flex flex-col justify-center items-center px-6 pb-6">
-           {needsApiKey && (
-             <div className="w-full mb-4 bg-purple-50 border border-purple-200 rounded-[1.5rem] p-4 flex flex-col items-center animate-in zoom-in">
-                <p className="text-[10px] font-black text-purple-600 uppercase mb-2 text-center">AI Activation Required</p>
-                <button onClick={handleOpenKeySelection} className="w-full py-3 bg-purple-600 text-white rounded-xl font-black text-xs shadow-md active:scale-95 flex items-center justify-center gap-2">
-                  <Key className="w-4 h-4" /> Setup AI Key
-                </button>
-                <p className="text-[8px] text-purple-400 mt-2 text-center">Required for Unlimited mode</p>
-             </div>
-           )}
-           {canClaimBonus && (
-             <div className="w-full mb-4 bg-amber-50 border border-amber-200 rounded-[1.5rem] p-4 flex items-center justify-between animate-in zoom-in">
-                <div className="flex items-center gap-3">
-                   <div className="w-10 h-10 bg-amber-400 rounded-xl flex items-center justify-center text-white shadow-md"><Gift className="w-5 h-5" /></div>
-                   <div>
-                      <p className="text-[9px] font-black text-amber-600 uppercase">{t.dailyBonus}</p>
-                      <p className="font-bold text-amber-900 text-[10px]">Claim 50 coins!</p>
-                   </div>
-                </div>
-                <button onClick={handleClaimBonus} className="px-4 py-2 bg-amber-500 text-white rounded-xl font-black text-[10px] shadow-sm active:scale-90">Claim</button>
-             </div>
-           )}
-           <div className="w-full bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200 mb-6 text-center relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-indigo-600"></div>
-              <p className="text-[10px] font-black text-slate-400 uppercase mb-1">{t.brainScore}</p>
-              <h3 className="text-6xl font-black text-slate-900 mb-4 tracking-tighter tabular-nums">{gameState.brainScore}</h3>
-              <div className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-black border border-blue-100 uppercase">
-                <Sparkles className="w-3 h-3" /> {t.level} {gameState.currentLevel}
+        <div className="flex-1 flex flex-col justify-center items-center px-10">
+           <div className="w-full bg-white border border-gray-100 rounded-[3rem] p-12 shadow-2xl shadow-blue-100/10 mb-14 text-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 opacity-10"><Brain className="w-32 h-32 text-blue-600" /></div>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Brain Score</p>
+              <h3 className="text-8xl font-black text-blue-600 mb-6 tracking-tighter tabular-nums">{gameState.brainScore}</h3>
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black border border-blue-100">
+                <Sparkles className="w-4 h-4" /> QUEST LEVEL {gameState.currentLevel}
               </div>
            </div>
-           <div className="w-full max-w-xs space-y-3">
-              <button onClick={() => changeView('PLAY')} className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black text-lg shadow-lg flex items-center justify-center gap-3 active:scale-95">
-                <Play className="w-5 h-5 fill-blue-400 text-blue-400" /> {t.play}
+           
+           <div className="w-full max-w-xs space-y-4">
+              <button 
+                onClick={() => setView('PLAY')} 
+                className="w-full py-6 bg-blue-600 text-white rounded-[2rem] font-black text-xl shadow-2xl flex items-center justify-center gap-4 active:scale-95 transition-all"
+              >
+                Continue Quest
               </button>
-              <button onClick={() => { changeView('AI_LAB'); generateAIChallenge(); }} className="w-full py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black text-sm flex items-center justify-center gap-3 active:scale-95 shadow-indigo-100">
-                <Zap className="w-5 h-5 fill-amber-400 text-amber-400" /> AI Challenge Lab
-              </button>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                  <Coins className="w-4 h-4 text-yellow-500 mb-0.5" />
-                  <span className="text-xs font-black text-slate-700">{gameState.coins}</span>
-                </div>
-                <button onClick={() => changeView('LEVELS')} className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                  <LayoutGrid className="w-4 h-4 text-blue-500 mb-0.5" />
-                  <span className="text-[10px] font-black text-slate-400 uppercase">{t.levels}</span>
-                </button>
-              </div>
-           </div>
-        </div>
-      </div>
-    );
-  }
 
-  if (view === 'LEVELS') {
-    return (
-      <div className="flex flex-col min-h-screen bg-slate-50">
-        <Header title={t.levels} />
-        <div className="p-4 grid grid-cols-5 gap-2 overflow-y-auto pb-20">
-          {QUESTIONS.map((q, i) => {
-            const isUnlocked = i + 1 <= gameState.currentLevel;
-            const isDone = gameState.completedLevels.includes(q.id);
-            return (
-              <button key={q.id} disabled={!isUnlocked} onClick={() => { playSound('click'); setGameState(p => ({ ...p, currentLevel: i + 1 })); setView('PLAY'); }} className={`aspect-square rounded-xl flex items-center justify-center font-black text-sm border-2 transition-all active:scale-90 ${isDone ? 'bg-emerald-500 border-emerald-600 text-white' : isUnlocked ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-100 border-slate-100 text-slate-300'}`}>
-                {isUnlocked ? i + 1 : <X className="w-3 h-3" />}
+              <button 
+                onClick={generateAIQuestion}
+                disabled={isAiLoading}
+                className="w-full py-6 bg-indigo-900 text-white rounded-[2rem] font-black text-xl shadow-2xl flex items-center justify-center gap-4 active:scale-95 transition-all disabled:opacity-50"
+              >
+                {isAiLoading ? (
+                  <Loader2 className="w-7 h-7 animate-spin" />
+                ) : (
+                  <Zap className="w-7 h-7 fill-yellow-400 text-yellow-400" />
+                )}
+                AI Challenge Lab
               </button>
-            );
-          })}
+
+              <div className="grid grid-cols-2 gap-4">
+                 <button 
+                  onClick={() => setView('LEVELS')} 
+                  className="py-5 bg-white border border-gray-100 rounded-2xl flex flex-col items-center gap-2 active:scale-95 shadow-sm"
+                 >
+                  <Coins className="w-6 h-6 text-yellow-500" />
+                  <span className="text-lg font-black text-gray-800">{gameState.coins}</span>
+                 </button>
+                 <button 
+                  onClick={() => setView('LEVELS')} 
+                  className="py-5 bg-white border border-gray-100 rounded-2xl flex flex-col items-center gap-2 active:scale-95 shadow-sm"
+                 >
+                  <LayoutGrid className="w-6 h-6 text-orange-400" />
+                  <span className="text-[10px] font-black text-gray-400 uppercase">Levels</span>
+                 </button>
+              </div>
+           </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 overflow-hidden relative">
-      <Header title={view === 'AI_LAB' ? "AI Lab" : `${t.level} ${gameState.currentLevel}`} />
+    <div className="flex flex-col min-h-screen bg-gray-50 overflow-y-auto pb-40">
+      <HUD title={view === 'AI_LAB' ? "AI Lab Challenge" : `Level ${gameState.currentLevel}`} />
       
-      {isGenerating ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center animate-pulse">
-          <div className="relative w-24 h-24 mb-6">
-            <div className="absolute inset-0 border-[6px] border-slate-100 rounded-full"></div>
-            <div className="absolute inset-0 border-[6px] border-transparent border-t-indigo-600 rounded-full animate-spin"></div>
-            <Brain className="absolute inset-0 m-auto w-10 h-10 text-indigo-400" />
-          </div>
-          <h3 className="text-xl font-black text-slate-800 tracking-tight italic">AI Thinking...</h3>
-          <p className="text-[10px] text-slate-400 font-bold mt-2 uppercase tracking-[0.2em]">Creating unlimited challenges</p>
-        </div>
-      ) : (
-        <div className="p-4 flex-1 flex flex-col max-w-md mx-auto w-full overflow-y-auto pb-32">
-          {view === 'AI_LAB' && (
-            <div className="flex items-center justify-center gap-2 mb-4 animate-in slide-in-from-top-4">
-              <div className="px-4 py-1 bg-rose-50 text-rose-600 rounded-full border border-rose-100 flex items-center gap-2">
-                <Flame className="w-3 h-3 fill-current" />
-                <span className="text-[10px] font-black">STREAK: {aiStreak}</span>
+      <div className="p-8 flex-1 flex flex-col max-w-md mx-auto w-full">
+        <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-gray-100 mb-8 flex flex-col items-center text-center relative">
+            {currentQ.isAI && (
+              <div className="absolute top-4 left-4 flex items-center gap-1 px-3 py-1 bg-indigo-100 text-indigo-600 rounded-full text-[8px] font-black">
+                <Zap className="w-3 h-3 fill-current" /> GENERATED
               </div>
-            </div>
-          )}
-          <div className="bg-white p-6 rounded-[2rem] shadow-lg border border-slate-100 mb-4 flex flex-col items-center text-center relative overflow-hidden">
-              {currentQ.isAI ? (
-                <div className="absolute top-3 right-3 bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full text-[7px] font-black border border-indigo-100 uppercase flex items-center gap-1"><Zap className="w-2.5 h-2.5 fill-current" /> AI Unlimited</div>
-              ) : currentQ.type === 'IMAGE_MCQ' && (
-                <div className="absolute top-3 left-3 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full text-[7px] font-black border border-blue-100 uppercase flex items-center gap-1"><ImageIcon className="w-2.5 h-2.5" /> {t.visualQuest}</div>
-              )}
-              {currentQ.imageUrl && (
-                <div className="mb-4 w-full h-40 rounded-[1.5rem] overflow-hidden bg-slate-50"><img src={currentQ.imageUrl} className="w-full h-full object-cover" alt="Puzzle" /></div>
-              )}
-              <h3 className="text-lg font-black text-slate-800 leading-snug px-2">
-                {currentQ.prompt[gameState.language] || currentQ.prompt.en}
-              </h3>
-          </div>
-          <div className="space-y-3">
-              {currentQ.type === 'FILL_BLANKS' ? (
-                <div className="relative">
-                  <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder={gameState.language === 'hi' ? "यहां लिखें..." : "Answer..."} className="w-full p-4 rounded-2xl bg-white border-2 border-slate-100 focus:border-indigo-500 outline-none font-black text-lg shadow-md" />
-                  <button onClick={() => handleAnswer(inputText)} className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg active:scale-90"><Send className="w-4 h-4" /></button>
-                </div>
-              ) : (
-                (currentQ.options?.[gameState.language] || currentQ.options?.en || []).map((opt, idx) => {
-                  let isCorrectStyle = selectedIdx === idx && idx === Number(currentQ.answer);
-                  return (
-                    <button key={idx} onClick={() => handleAnswer(idx)} className={`w-full p-4 rounded-2xl font-black text-sm text-left shadow-sm border-2 transition-all active:scale-98 flex items-center justify-between group ${selectedIdx === idx ? (isCorrectStyle ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-rose-500 border-rose-600 text-white animate-shake') : 'bg-white border-slate-100 text-slate-700'}`}>
-                      <span className="flex-1 pr-4">{opt}</span>
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] border ${selectedIdx === idx ? 'bg-white/20 border-white/40' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>{String.fromCharCode(65 + idx)}</div>
-                    </button>
-                  );
-                })
-              )}
-          </div>
-          <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-50/90 backdrop-blur-md flex gap-3 max-w-md mx-auto">
-              <button onClick={() => { playSound('click'); if(!showHint && gameState.coins >= 5) { setShowHint(true); setGameState(p => ({ ...p, coins: p.coins - 5 })); } else if(!showHint) { alert(t.notEnoughCoins); } else { setShowHint(false); } }} className={`w-14 h-14 flex flex-col items-center justify-center rounded-2xl font-black shadow-lg transition-all ${showHint ? 'bg-yellow-400 text-yellow-900 border-2 border-yellow-500' : 'bg-white text-slate-300 border border-slate-100'}`}>
-                <Lightbulb className={`w-5 h-5 ${showHint ? 'fill-current' : ''}`} />
-                <span className="text-[7px] mt-0.5 uppercase tracking-widest">{t.hint}</span>
-              </button>
-              {feedback.show && feedback.type === 'correct' ? (
-                <button onClick={handleNext} className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95"><Sparkles className="w-4 h-4" /> {t.next}</button>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center bg-white border border-slate-100 rounded-2xl text-[9px] text-slate-300 font-black italic">
-                  <span>Goal: Solve the puzzle</span>
-                  <span className="text-[7px] uppercase tracking-tighter opacity-50">Unlimited AI Mode</span>
-                </div>
-              )}
-          </div>
-          {showHint && (
-            <div className="mt-4 p-4 bg-blue-50/50 border-2 border-blue-100 border-dashed rounded-2xl text-blue-900 text-xs font-bold animate-in zoom-in">
-              <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block mb-1">Hint</span>
-              {currentQ.hint[gameState.language] || currentQ.hint.en}
-            </div>
-          )}
+            )}
+            {currentQ.imageUrl && (
+              <div className="mb-8 w-full h-64 rounded-3xl overflow-hidden bg-gray-50 ring-4 ring-blue-50">
+                <img src={currentQ.imageUrl} className="w-full h-full object-cover" alt="Puzzle" />
+              </div>
+            )}
+            <h3 className="text-2xl font-black text-gray-800 tracking-tighter leading-tight">
+              {currentQ.prompt[gameState.language] || currentQ.prompt.en}
+            </h3>
         </div>
-      )}
+
+        <div className="grid grid-cols-1 gap-4">
+            {currentQ.type === 'FILL_BLANKS' ? (
+              <div className="relative">
+                <input 
+                  type="text" 
+                  value={inputText} 
+                  onChange={(e) => setInputText(e.target.value)} 
+                  placeholder="Type answer..." 
+                  className="w-full p-6 rounded-[2rem] bg-white border-2 border-gray-100 focus:border-blue-500 outline-none font-black text-xl shadow-lg" 
+                />
+                <button 
+                  onClick={() => handleAnswer(inputText)} 
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-4 bg-blue-600 text-white rounded-full active:scale-90 shadow-lg"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </div>
+            ) : (
+              (currentQ.options?.[gameState.language] || currentQ.options?.en || []).map((opt, idx) => (
+                <button 
+                  key={idx} 
+                  onClick={() => handleAnswer(idx)} 
+                  className={`p-6 rounded-[2rem] font-black text-xl text-left active:scale-95 shadow-lg border-2 transition-all ${selectedIdx === idx ? (idx === currentQ.answer ? 'bg-green-500 border-green-600 text-white' : 'bg-red-500 border-red-600 text-white animate-shake') : 'bg-white border-gray-100 text-gray-700 hover:border-blue-100'}`}
+                >
+                  {opt}
+                </button>
+              ))
+            )}
+        </div>
+
+        <div className="fixed bottom-10 left-0 right-0 p-10 flex gap-4 max-w-md mx-auto z-40">
+            <button 
+              onClick={() => setShowHint(!showHint)} 
+              className="flex-1 py-5 bg-yellow-400 text-yellow-900 rounded-[2rem] font-black shadow-xl active:scale-95"
+            >
+              <Lightbulb className="w-6 h-6 mx-auto" />
+            </button>
+            {feedback.show && feedback.type === 'correct' ? (
+              <button 
+                onClick={handleNext} 
+                className="flex-[3] py-5 bg-blue-600 text-white rounded-[2rem] font-black shadow-xl active:scale-95 flex items-center justify-center gap-2"
+              >
+                <Sparkles className="w-5 h-5" /> Next Level
+              </button>
+            ) : (
+              <button 
+                onClick={() => setView('HOME')} 
+                className="flex-[3] py-5 bg-gray-900 text-white rounded-[2rem] font-black shadow-xl active:scale-95"
+              >
+                Main Menu
+              </button>
+            )}
+        </div>
+        {showHint && (
+          <div className="mt-4 p-6 bg-blue-50 border border-blue-100 rounded-2xl text-blue-800 font-bold animate-in zoom-in">
+            {currentQ.hint[gameState.language] || currentQ.hint.en}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
